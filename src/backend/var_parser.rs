@@ -1,6 +1,21 @@
-use uefi_raw::table::boot::SignatureList;
 use std::mem::size_of;
 use x509_parser::prelude::*;
+use std::ptr;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct EfiSignatureList {
+    pub signature_type: [u8; 16], // GUID (np. EFI_CERT_X509_GUID)
+    pub signature_list_size: u32,
+    pub signature_header_size: u32,
+    pub signature_size: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct EfiSignatureData {
+    pub signature_owner: [u8; 16], // GUID właściciela
+    // signature_data: [u8; signature_size - 16] <- tu jest certyfikat
+}
 
 fn parse_signature_entries(entries_raw: &[u8], sig_size: usize) {
     let mut offset = 0;
@@ -30,16 +45,16 @@ fn parse_signature_entries(entries_raw: &[u8], sig_size: usize) {
 pub fn parse_uefi_signature_list(data: &[u8]) {
     let mut offset = 0;
 
-    while offset + size_of::<SignatureList>() <= data.len() {
+    while offset + size_of::<EfiSignatureList>() <= data.len() {
         // Mapujemy nagłówek listy
-        let list = unsafe { &*(data[offset..].as_ptr() as *const SignatureList) };
+        let list = unsafe { &*(data[offset..].as_ptr() as *const EfiSignatureList) };
         
         println!("Typ (GUID): {:?}", list.signature_type);
         println!("Rozmiar listy: {}", list.signature_list_size);
         println!("Rozmiar sygnatury: {}", list.signature_size);
 
         // Obliczamy gdzie zaczynają się dane (za nagłówkiem i opcjonalnym SignatureHeader)
-        let data_start = offset + size_of::<SignatureList>() + list.signature_header_size as usize;
+        let data_start = offset + size_of::<EfiSignatureList>() + list.signature_header_size as usize;
         let data_end = offset + list.signature_list_size as usize;
         let signature_data_raw = &data[data_start..data_end];
 
@@ -49,4 +64,15 @@ pub fn parse_uefi_signature_list(data: &[u8]) {
         // Przechodzimy do kolejnej listy (jeśli istnieje)
         offset += list.signature_list_size as usize;
     }
+}
+
+pub fn parse(data: &[u8]) {
+    if data.len() < std::mem::size_of::<EfiSignatureList>() { return; }
+
+    // Bezpieczne czytanie z nieodpowiednio wyrównanego adresu
+    let header: EfiSignatureList = unsafe {
+        ptr::read_unaligned(data.as_ptr() as *const EfiSignatureList)
+    };
+
+    println!("{:?}", header);
 }

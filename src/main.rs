@@ -3,5 +3,9 @@ mod backend;
 
 fn main() {
     let manager = efivar::system();
-    println!("{:?}", backend::var_reader::is_sb_active(manager.as_ref()).unwrap())
+    let kek = backend::var_reader::get_kek_raw(manager.as_ref());
+
+    println!("{:?}", kek);
+    backend::var_parser::parse(&kek.unwrap());
 }
+

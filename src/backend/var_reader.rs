@@ -30,3 +30,4 @@ pub fn get_dbx_raw(manager: &dyn VarManager) -> efivar::Result<Vec<u8>> {
     let (data, _) = manager.read(&efi::Variable::new("dbxDefault"))?;
     Ok(data)
 }
+
