@@ -1,6 +1,7 @@
 use std::mem::size_of;
 use x509_parser::prelude::*;
 use std::ptr;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct EfiSignatureList {
@@ -8,13 +9,6 @@ pub struct EfiSignatureList {
     pub signature_list_size: u32,
     pub signature_header_size: u32,
     pub signature_size: u32,
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct EfiSignatureData {
-    pub signature_owner: [u8; 16], // GUID właściciela
-    // signature_data: [u8; signature_size - 16] <- tu jest certyfikat
 }
 
 fn parse_signature_entries(entries_raw: &[u8], sig_size: usize) {

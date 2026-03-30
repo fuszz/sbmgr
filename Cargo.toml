@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 crossterm = "0.29.0"
 efivar = "2.0.0"
+hex = "0.4.3"
 ratatui = "0.30.0"
 uefi-raw = "0.14.0"
 x509-parser = "0.18.1"
