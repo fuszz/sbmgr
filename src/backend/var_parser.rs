@@ -1,72 +1,71 @@
-use std::mem::size_of;
-use x509_parser::prelude::*;
+use std::{default, mem::size_of};
+use x509_parser::{nom::ToUsize, prelude::*};
 use std::ptr;
+use anyhow::{Result, ensure};
+use uuid::Uuid;
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct EfiSignatureList {
-    pub signature_type: [u8; 16], // GUID (np. EFI_CERT_X509_GUID)
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct SignatureData {
+    pub guid: Uuid, 
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct SignatureList {
+    pub guid: Uuid,
     pub signature_list_size: u32,
     pub signature_header_size: u32,
     pub signature_size: u32,
+    pub signatures: Vec<SignatureData>,
 }
 
-fn parse_signature_entries(entries_raw: &[u8], sig_size: usize) {
-    let mut offset = 0;
-    while offset + sig_size <= entries_raw.len() {
-        let entry = &entries_raw[offset..offset + sig_size];
-        
-        // Pierwsze 16 bajtów to GUID właściciela (np. Microsoft)
-        let owner = &entry[..16];
-        // Reszta to właściwy certyfikat X.509
-        let cert_der = &entry[16..];
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VariableContent {
+    pub signature_lists: Vec<SignatureList>,
+}
 
-        // Parsowanie metadanych certyfikatu
-        match parse_x509_certificate(cert_der) {
-            Ok((_, cert)) => {
-                let tbs = &cert.tbs_certificate;
-                println!("  Wystawca: {}", tbs.issuer);
-                println!("  Podmiot:  {}", tbs.subject);
-                println!("  Ważność:  {} do {}", tbs.validity.not_before, tbs.validity.not_after);
-            }
-            Err(e) => eprintln!("  Błąd parsowania X.509: {:?}", e),
+impl SignatureData {
+    pub fn parse_signature_data(data: &Vec<u8>, start: &usize, signature_size: &usize) -> Result<Self> {
+        let mut signature_data: SignatureData = Self::default();
+        signature_data.guid = Uuid::from_bytes_le(data[*start..*start+16].try_into()?);
+        Ok(signature_data)
+    }
+}
+
+impl SignatureList {
+
+    pub fn parse_signature_list(data: &Vec<u8>, offset: &mut usize) -> Result<Self> {
+        let mut signature_list: SignatureList = Self::default();
+        let mut start = *offset;
+        signature_list.guid = Uuid::from_bytes_le(data[start..start+16].try_into()?);
+        start += 16;
+        signature_list.signature_list_size = u32::from_le_bytes(data[start..start+4].try_into()?);
+        start+=4;
+        signature_list.signature_header_size= u32::from_le_bytes(data[start..start+4].try_into()?);
+        start+=4;
+        signature_list.signature_size= u32::from_le_bytes(data[start..start+4].try_into()?);
+        start+=4;
+        
+        while start < *offset + signature_list.signature_list_size.to_usize() {
+
+            start += signature_list.signature_size.to_usize();
         }
 
-        offset += sig_size;
+        *offset += start;
+        Ok(signature_list)
     }
 }
 
-pub fn parse_uefi_signature_list(data: &[u8]) {
-    let mut offset = 0;
-
-    while offset + size_of::<EfiSignatureList>() <= data.len() {
-        // Mapujemy nagłówek listy
-        let list = unsafe { &*(data[offset..].as_ptr() as *const EfiSignatureList) };
+impl VariableContent {
+    pub fn parse_variable(data: &Vec<u8>) -> Result<Self> {
+        let mut offset: usize = 0;
+        let mut variable_content: VariableContent = VariableContent::default(); 
         
-        println!("Typ (GUID): {:?}", list.signature_type);
-        println!("Rozmiar listy: {}", list.signature_list_size);
-        println!("Rozmiar sygnatury: {}", list.signature_size);
-
-        // Obliczamy gdzie zaczynają się dane (za nagłówkiem i opcjonalnym SignatureHeader)
-        let data_start = offset + size_of::<EfiSignatureList>() + list.signature_header_size as usize;
-        let data_end = offset + list.signature_list_size as usize;
-        let signature_data_raw = &data[data_start..data_end];
-
-        // Iterujemy po wpisach wewnątrz tej konkretnej listy
-        parse_signature_entries(signature_data_raw, list.signature_size as usize);
-
-        // Przechodzimy do kolejnej listy (jeśli istnieje)
-        offset += list.signature_list_size as usize;
+        while offset < data.len() {
+            variable_content.signature_lists.push(
+                SignatureList::parse_signature_list(&data, &mut offset)?
+            );
     }
+    Ok(variable_content)
 }
-
-pub fn parse(data: &[u8]) {
-    if data.len() < std::mem::size_of::<EfiSignatureList>() { return; }
-
-    // Bezpieczne czytanie z nieodpowiednio wyrównanego adresu
-    let header: EfiSignatureList = unsafe {
-        ptr::read_unaligned(data.as_ptr() as *const EfiSignatureList)
-    };
-
-    println!("{:?}", header);
 }
