@@ -1,71 +1,113 @@
-use std::{any, env::var};
+use std::{any, env::var, str::FromStr};
 
-use efivar::{
-    VarManager, boot::{self, BootEntry}, efi
-};
 use anyhow::{self, Context, Result, ensure};
-use hex;
+use efivar::{
+    VarManager,
+    boot::{self, BootEntry},
+    efi,
+};
+use uuid::Uuid;
 
-pub fn is_secure_boot_active(manager: &dyn VarManager) -> Result<bool> {
-    let (data, _) = manager.read(&efi::Variable::new("SecureBoot"))?;
-    if data[0] == 1 {
-        Ok(true)
-    } else {
-        Ok(false)
+pub struct VarReader {
+    pub manager: Box<dyn VarManager>,
+    pub variables: Vec<String>,
+}
+
+impl VarReader {
+    pub fn default() -> Result<Self> {
+        Ok(VarReader {
+            manager: efivar::system(),
+            variables: vec![],
+        })
     }
-}
 
-pub fn is_setup_mode_active(manager: &dyn VarManager) -> Result<bool> {
-    let (data, _) = manager.read(&efi::Variable::new("SetupMode"))?;
-    if data[0] == 1 {
-        Ok(true)
-    } else {
-        Ok(false)
+    pub fn update_variable_guids(&mut self) -> Result<()> {
+        let all_vars = self.manager.get_all_vars()?;
+        for var in all_vars {
+            self.variables.push(String::from(var.to_string()));
+        }
+        Ok(())
     }
-}
 
-pub fn is_audit_mode_active(manager: &dyn VarManager) -> Result<bool> {
-    let (data, _) = manager.read(&efi::Variable::new("AuditMode"))?;
-    if data[0] == 1 {
-        Ok(true)
-    } else {
-        Ok(false)
+    pub fn find_variable_name(&self, var: &str) -> Result<(&str, &str)>{
+        let full_name = self
+            .variables
+            .iter()
+            .find(|s| s.contains(&var))
+            .ok_or_else(|| anyhow::anyhow!("variable {} not found", var))?;
+
+        let (name, guid) = full_name
+            .split_once('-')
+            .ok_or_else(|| anyhow::anyhow!("Unable to parse variable name"))?;
+        
+        Ok((name, guid))
     }
-}
 
-pub fn get_pk(manager: &dyn VarManager) -> Result<Vec<u8>> {
-    let (data, _) = manager.read(&efi::Variable::new("PK"))?;
-    Ok(data)
-}
+    pub fn is_secure_boot_active(&self) -> Result<bool> {
+        let (name, guid) = self.find_variable_name("SecureBoot")?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        if data[0] == 1 { Ok(true) } else { Ok(false) }
+    }
 
-pub fn get_kek(manager: &dyn VarManager) -> Result<Vec<u8>> {
-    let (data, _) = manager.read(&efi::Variable::new("KEK"))?;
-    Ok(data)
-}
+    pub fn is_setup_mode_active(&self) -> Result<bool> {
+        let (name, guid) = self.find_variable_name("SetupMode")?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        if data[0] == 1 { Ok(true) } else { Ok(false) }
+    }
 
-pub fn get_db(manager: &dyn VarManager) -> Result<Vec<u8>> {
-    let (data, _) = manager.read(&efi::Variable::new("dbDefault"))?;
-    Ok(data)
-}
+    pub fn is_audit_mode_active(&self) -> Result<bool> {
+        let (name, guid) = self.find_variable_name("AuditMode")?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        if data[0] == 1 { Ok(true) } else { Ok(false) }
+    }
 
-pub fn get_dbx(manager: &dyn VarManager) -> Result<Vec<u8>> {
-    let (data, _) = manager.read(&efi::Variable::new("dbxDefault"))?;
-    Ok(data)
-}
+    pub fn get_pk(&self) -> Result<Vec<u8>> {
+        let (name, guid) = self.find_variable_name("PK")?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        Ok(data)
+    }
 
-pub fn get_boot_order(manager: &dyn VarManager) -> Result<Vec<u16>> {
-    let (data, _) = manager
-        .read(&efi::Variable::new("BootOrder"))
-        .context("Unable to read BootOrder variable")?;
-    anyhow::ensure!(data.len() % 2 == 0, "Wrong BootOrder variable data length");
-    let boot_order_list: Vec<u16> = data.chunks_exact(2).map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]])).collect();
-    Ok(boot_order_list)
-}
+    pub fn get_kek(&self) -> Result<Vec<u8>> {
+        let (name, guid) = self.find_variable_name("KEK")?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        Ok(data)
+    }
 
-pub fn get_boot_entry(manager: &dyn VarManager, boot_id: u16) -> Result<BootEntry> {
-    let boot_order = get_boot_order(manager)?;
-    ensure!(boot_order.contains(&boot_id), "Provided boot_id does not exist");
-    let boot_entry_no: String = format!("{:04X}", boot_id.to_le());
-    let boot_entry = BootEntry::read(manager, &efi::Variable::new(&format!("{}{}","Boot", boot_entry_no)))?;
-    Ok(boot_entry)
+    pub fn get_db(&self) -> Result<Vec<u8>> {
+        let (name, guid) = self.find_variable_name("db")?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        Ok(data)
+    }
+
+    pub fn get_dbx(&self) -> Result<Vec<u8>> {
+        let (name, guid) = self.find_variable_name("dbx")?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;        
+        Ok(data)
+    }
+
+    pub fn get_boot_order(&self) -> Result<Vec<u16>> {
+        let (name, guid) = self.find_variable_name("BootOrder")?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;   
+        anyhow::ensure!(data.len() % 2 == 0, "Wrong BootOrder variable data length");
+        let boot_order_list: Vec<u16> = data
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect();
+        Ok(boot_order_list)
+    }
+
+    pub fn get_boot_entry(&self, boot_id: u16) -> Result<BootEntry> {
+        let boot_order = self.get_boot_order()?;
+        ensure!(
+            boot_order.contains(&boot_id),
+            "Provided boot_id does not exist"
+        );
+        let boot_entry_no: String = format!("Boot{:04X}", boot_id.to_le());
+        let (name, guid) = self.find_variable_name(&boot_entry_no)?;        
+        let boot_entry = BootEntry::read(
+            self.manager.as_ref(),
+            &efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?),
+        )?;
+        Ok(boot_entry)
+    }
 }

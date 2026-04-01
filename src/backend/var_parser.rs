@@ -1,4 +1,5 @@
 use std::{default, mem::size_of};
+use ratatui::text::ToLine;
 use x509_parser::{nom::ToUsize, prelude::*};
 use std::ptr;
 use anyhow::{Result, ensure};
@@ -28,6 +29,7 @@ impl SignatureData {
     pub fn parse_signature_data(data: &Vec<u8>, start: &usize, signature_size: &usize) -> Result<Self> {
         let mut signature_data: SignatureData = Self::default();
         signature_data.guid = Uuid::from_bytes_le(data[*start..*start+16].try_into()?);
+        signature_data.data = data[*start+16..].try_into()?;
         Ok(signature_data)
     }
 }
@@ -47,7 +49,9 @@ impl SignatureList {
         start+=4;
         
         while start < *offset + signature_list.signature_list_size.to_usize() {
-
+            signature_list.signatures.push(
+                SignatureData::parse_signature_data(&data, &start, &signature_list.signature_size.to_usize())?
+            );
             start += signature_list.signature_size.to_usize();
         }
 
