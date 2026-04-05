@@ -7,6 +7,7 @@ use efivar::{
     efi,
 };
 use uuid::Uuid;
+use regex::Regex;
 
 pub struct VarReader {
     pub manager: Box<dyn VarManager>,
@@ -96,12 +97,17 @@ impl VarReader {
         Ok(boot_order_list)
     }
 
+    pub fn get_boot_entries_list(&self) -> Result<Vec<String>> {
+        let mut boot_entries_list: Vec<String> = self.variables
+                                    .iter()
+                                    .filter(|s| Regex::new(r"^Boot[0-9A-Fa-f]{4}-[0-9a-fA-F-]{36}$").unwrap().is_match(s))
+                                    .cloned()
+                                    .collect();
+        boot_entries_list.sort();
+        Ok(boot_entries_list)
+    }
+
     pub fn get_boot_entry(&self, boot_id: u16) -> Result<BootEntry> {
-        let boot_order = self.get_boot_order()?;
-        ensure!(
-            boot_order.contains(&boot_id),
-            "Provided boot_id does not exist"
-        );
         let boot_entry_no: String = format!("Boot{:04X}", boot_id.to_le());
         let (name, guid) = self.find_variable_name(&boot_entry_no)?;        
         let boot_entry = BootEntry::read(
