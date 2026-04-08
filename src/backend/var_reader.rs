@@ -11,7 +11,7 @@ use regex::Regex;
 
 pub struct VarReader {
     pub manager: Box<dyn VarManager>,
-    pub variables: Vec<String>,
+    pub variables: Vec<(String, Uuid)>,
 }
 
 impl VarReader {
@@ -25,70 +25,77 @@ impl VarReader {
     pub fn update_variable_guids(&mut self) -> Result<()> {
         let all_vars = self.manager.get_all_vars()?;
         for var in all_vars {
-            self.variables.push(String::from(var.to_string()));
+            self.variables.push((String::from(var.name()), Uuid::from_str(&var.vendor().to_string())?))
         }
+        self.variables.sort();
         Ok(())
     }
 
-    pub fn find_variable_name(&self, var: &str) -> Result<(&str, &str)>{
-        let full_name = self
+    pub fn find_variable_guid(&self, var: &str) -> Result<Uuid>{
+        let guid = self
             .variables
             .iter()
-            .find(|s| s.contains(&var))
-            .ok_or_else(|| anyhow::anyhow!("variable {} not found", var))?;
-
-        let (name, guid) = full_name
-            .split_once('-')
-            .ok_or_else(|| anyhow::anyhow!("Unable to parse variable name"))?;
+            .find(|s| s.0.eq(&var))
+            .ok_or_else(|| anyhow::anyhow!("variable {} not found", var))?
+            .1
+            .clone();
         
-        Ok((name, guid))
+        Ok(guid)
     }
 
     pub fn is_secure_boot_active(&self) -> Result<bool> {
-        let (name, guid) = self.find_variable_name("SecureBoot")?;
-        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        let name = "SecureBoot";
+        let guid = self.find_variable_guid(name)?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, guid))?;
         if data[0] == 1 { Ok(true) } else { Ok(false) }
     }
 
     pub fn is_setup_mode_active(&self) -> Result<bool> {
-        let (name, guid) = self.find_variable_name("SetupMode")?;
-        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        let name = "SetupMode";
+        let guid = self.find_variable_guid(name)?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, guid))?;
         if data[0] == 1 { Ok(true) } else { Ok(false) }
     }
 
     pub fn is_audit_mode_active(&self) -> Result<bool> {
-        let (name, guid) = self.find_variable_name("AuditMode")?;
-        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        let name = "AuditMode";
+        let guid = self.find_variable_guid(name)?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, guid))?;
         if data[0] == 1 { Ok(true) } else { Ok(false) }
     }
 
     pub fn get_pk(&self) -> Result<Vec<u8>> {
-        let (name, guid) = self.find_variable_name("PK")?;
-        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        let name = "PK";
+        let guid = self.find_variable_guid(name)?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, guid))?;
         Ok(data)
     }
 
     pub fn get_kek(&self) -> Result<Vec<u8>> {
-        let (name, guid) = self.find_variable_name("KEK")?;
-        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        let name = "KEK";
+        let guid = self.find_variable_guid(name)?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, guid))?;
         Ok(data)
     }
 
     pub fn get_db(&self) -> Result<Vec<u8>> {
-        let (name, guid) = self.find_variable_name("db")?;
-        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;
+        let name = "db";
+        let guid = self.find_variable_guid(name)?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, guid))?;
         Ok(data)
     }
 
     pub fn get_dbx(&self) -> Result<Vec<u8>> {
-        let (name, guid) = self.find_variable_name("dbx")?;
-        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;        
+        let name = "dbx";
+        let guid = self.find_variable_guid(name)?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, guid))?;
         Ok(data)
     }
 
     pub fn get_boot_order(&self) -> Result<Vec<u16>> {
-        let (name, guid) = self.find_variable_name("BootOrder")?;
-        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?))?;   
+        let name = "BootOrder";
+        let guid = self.find_variable_guid(name)?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, guid))?;
         anyhow::ensure!(data.len() % 2 == 0, "Wrong BootOrder variable data length");
         let boot_order_list: Vec<u16> = data
             .chunks_exact(2)
@@ -97,10 +104,10 @@ impl VarReader {
         Ok(boot_order_list)
     }
 
-    pub fn get_boot_entries_list(&self) -> Result<Vec<String>> {
-        let mut boot_entries_list: Vec<String> = self.variables
+    pub fn get_boot_entries_list(&self) -> Result<Vec<(String, Uuid)>> {
+        let mut boot_entries_list: Vec<(String, Uuid)> = self.variables
                                     .iter()
-                                    .filter(|s| Regex::new(r"^Boot[0-9A-Fa-f]{4}-[0-9a-fA-F-]{36}$").unwrap().is_match(s))
+                                    .filter(|s| Regex::new(r"^Boot[0-9A-Fa-f]{4}$").unwrap().is_match(&s.0))
                                     .cloned()
                                     .collect();
         boot_entries_list.sort();
@@ -109,10 +116,10 @@ impl VarReader {
 
     pub fn get_boot_entry(&self, boot_id: u16) -> Result<BootEntry> {
         let boot_entry_no: String = format!("Boot{:04X}", boot_id.to_le());
-        let (name, guid) = self.find_variable_name(&boot_entry_no)?;        
+        let guid = self.find_variable_guid(&boot_entry_no)?;        
         let boot_entry = BootEntry::read(
             self.manager.as_ref(),
-            &efi::Variable::new_with_vendor(name, Uuid::from_str(guid)?),
+            &efi::Variable::new_with_vendor(&boot_entry_no, guid),
         )?;
         Ok(boot_entry)
     }
