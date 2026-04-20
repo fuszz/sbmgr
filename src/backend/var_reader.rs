@@ -1,5 +1,6 @@
 use std::{any, env::var, str::FromStr};
-
+use std::process::Command;
+use std::env::consts::OS;
 use anyhow::{self, Context, Result, ensure};
 use efivar::{
     VarManager,
@@ -8,6 +9,7 @@ use efivar::{
 };
 use uuid::Uuid;
 use regex::Regex;
+use sysinfo;
 
 pub struct VarReader {
     pub manager: Box<dyn VarManager>,
@@ -57,6 +59,29 @@ impl VarReader {
         if data[0] == 1 { Ok(true) } else { Ok(false) }
     }
 
+    pub fn is_shim_active(&self) -> Result<bool> {
+        if ! sysinfo::System::name().unwrap().contains("Linux") {
+            Ok(false)
+        } else {
+            let boot_id = u16::from_le_bytes(
+                    self.get_current_boot()?[0..2]
+                    .try_into()
+                    .unwrap()
+                );
+            if self.get_boot_entry(boot_id)?
+                .file_path_list
+                .as_ref()
+                .expect("Cannot find path") 
+                .file_path.path
+                .to_string().
+                contains("shim") {
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }      
+        }
+    }
+
     pub fn is_audit_mode_active(&self) -> Result<bool> {
         let name = "AuditMode";
         let guid = self.find_variable_guid(name)?;
@@ -102,6 +127,13 @@ impl VarReader {
             .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
             .collect();
         Ok(boot_order_list)
+    }
+
+    pub fn get_current_boot(&self) -> Result<Vec<u8>> {
+        let name = "BootCurrent";
+        let guid = self.find_variable_guid(name)?;
+        let (data, _) = self.manager.read(&efi::Variable::new_with_vendor(name, guid))?;
+        Ok(data)
     }
 
     pub fn get_boot_entries_list(&self) -> Result<Vec<(String, Uuid)>> {
