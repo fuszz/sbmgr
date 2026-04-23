@@ -12,6 +12,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 
 use crate::backend::var_creator::VarCreator;
 use crate::backend::var_reader::VarReader;
+use crate::backend::var_writer::VarWriter;
 
 const SEGMENTS: [&str; 5] = [
     "System and Secure Boot status",
@@ -300,22 +301,94 @@ fn run_current_action(app: &mut App) {
                 Err(err) => app.logs.push(format!("KEK creation failed: {err}")),
             }
         }
-        ActionKey::RegisterPkFile => app.logs.push(format!(
-            "[PLACEHOLDER] PK registration from file is not implemented yet: {}",
-            app.register_pk_path
-        )),
-        ActionKey::RegisterKekFile => app.logs.push(format!(
-            "[PLACEHOLDER] KEK registration from file is not implemented yet: {}",
-            app.register_kek_path
-        )),
-        ActionKey::RegisterDbFile => app.logs.push(format!(
-            "[PLACEHOLDER] db registration from file is not implemented yet: {}",
-            app.register_db_path
-        )),
-        ActionKey::RegisterDbxFile => app.logs.push(format!(
-            "[PLACEHOLDER] dbx registration from file is not implemented yet: {}",
-            app.register_dbx_path
-        )),
+        ActionKey::RegisterPkFile => {
+            if app.register_pk_path.is_empty() {
+                app.logs
+                    .push("Provide a PK file path in the Action window first.".to_string());
+                trim_logs(&mut app.logs);
+                return;
+            }
+
+            let mut writer = match VarWriter::default() {
+                Ok(w) => w,
+                Err(err) => {
+                    app.logs.push(format!("VarWriter init failed: {err}"));
+                    trim_logs(&mut app.logs);
+                    return;
+                }
+            };
+
+            match writer.write_pk_from_file(&app.register_pk_path) {
+                Ok(()) => app.logs.push("PK registered in NVRAM.".to_string()),
+                Err(err) => app.logs.push(format!("PK registration failed: {err}")),
+            }
+        }
+        ActionKey::RegisterKekFile => {
+            if app.register_kek_path.is_empty() {
+                app.logs
+                    .push("Provide a KEK file path in the Action window first.".to_string());
+                trim_logs(&mut app.logs);
+                return;
+            }
+
+            let mut writer = match VarWriter::default() {
+                Ok(w) => w,
+                Err(err) => {
+                    app.logs.push(format!("VarWriter init failed: {err}"));
+                    trim_logs(&mut app.logs);
+                    return;
+                }
+            };
+
+            match writer.write_kek_from_file(&app.register_kek_path) {
+                Ok(()) => app.logs.push("KEK registered in NVRAM.".to_string()),
+                Err(err) => app.logs.push(format!("KEK registration failed: {err}")),
+            }
+        }
+        ActionKey::RegisterDbFile => {
+            if app.register_db_path.is_empty() {
+                app.logs
+                    .push("Provide a db file path in the Action window first.".to_string());
+                trim_logs(&mut app.logs);
+                return;
+            }
+
+            let mut writer = match VarWriter::default() {
+                Ok(w) => w,
+                Err(err) => {
+                    app.logs.push(format!("VarWriter init failed: {err}"));
+                    trim_logs(&mut app.logs);
+                    return;
+                }
+            };
+
+            match writer.write_db_from_file(&app.register_db_path) {
+                Ok(()) => app.logs.push("db registered in NVRAM.".to_string()),
+                Err(err) => app.logs.push(format!("db registration failed: {err}")),
+            }
+        }
+        ActionKey::RegisterDbxFile => {
+            if app.register_dbx_path.is_empty() {
+                app.logs
+                    .push("Provide a dbx file path in the Action window first.".to_string());
+                trim_logs(&mut app.logs);
+                return;
+            }
+
+            let mut writer = match VarWriter::default() {
+                Ok(w) => w,
+                Err(err) => {
+                    app.logs.push(format!("VarWriter init failed: {err}"));
+                    trim_logs(&mut app.logs);
+                    return;
+                }
+            };
+
+            match writer.write_dbx_from_file(&app.register_dbx_path) {
+                Ok(()) => app.logs.push("dbx registered in NVRAM.".to_string()),
+                Err(err) => app.logs.push(format!("dbx registration failed: {err}")),
+            }
+        }
         ActionKey::SignBootloader => {
             if app.bootloader_path.is_empty() {
                 app.logs
