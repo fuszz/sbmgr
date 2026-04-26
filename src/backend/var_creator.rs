@@ -9,7 +9,8 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use anyhow::Result;
+use std::process::Command;
+use anyhow::{Result, anyhow};
 pub struct VarCreator {
     storage_dir: PathBuf,
 }
@@ -35,19 +36,70 @@ impl VarCreator {
         Self { storage_dir }
     }
 
-    pub fn create_pk(&self, name: &str, file_prefix: &str) -> Result<()> {
-        let mut params = CertificateParams::default();
-        let mut dn = DistinguishedName::new();
-        dn.push(rcgen::DnType::CommonName, "SecureBoot PK");
-        params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
-        params.distinguished_name = dn;
+        pub fn create_key_pair(&self, name: &str, file_prefix: &str) -> Result<()> {
+            let mut params = CertificateParams::default();
+            let mut dn = DistinguishedName::new();
+            dn.push(rcgen::DnType::CommonName, name);
+            params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+            params.distinguished_name = dn;
 
-        let key_pair = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
-        let cert = params.self_signed(&key_pair)?;
-        
-        self.save_key_and_cert(file_prefix, &key_pair.serialize_pem(), &cert.pem())?;
-        Ok(())
-    }
+            let key_pair = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
+            let cert = params.self_signed(&key_pair)?;
+            
+            self.save_key_and_cert(file_prefix, &key_pair.serialize_pem(), &cert.pem())?;
+            Ok(())
+        }
+        pub fn create_pk_file(&self, _name: &str, source_file: &str, dest_file: &str) -> Result<()> {
+            let source_path = Path::new(source_file);
+            let key_path = source_path.with_extension("key");
+
+            if !key_path.exists() {
+                return Err(anyhow!(
+                    "missing PK private key for signing: {}",
+                    key_path.display()
+                ));
+            }
+
+            let temp_esl_path = Path::new(dest_file).with_extension("esl.tmp");
+
+            let cert_to_esl = Command::new("cert-to-efi-sig-list")
+                .arg(source_file)
+                .arg(&temp_esl_path)
+                .output()
+                .map_err(|err| anyhow!("failed to run cert-to-efi-sig-list: {err}"))?;
+
+            if !cert_to_esl.status.success() {
+                let stderr = String::from_utf8_lossy(&cert_to_esl.stderr);
+                return Err(anyhow!(
+                    "cert-to-efi-sig-list failed for {}: {}",
+                    source_file,
+                    stderr.trim()
+                ));
+            }
+
+            let sign_output = Command::new("sign-efi-sig-list")
+                .args(["-c", source_file, "-k"])
+                .arg(&key_path)
+                .arg("PK")
+                .arg(&temp_esl_path)
+                .arg(dest_file)
+                .output()
+                .map_err(|err| anyhow!("failed to run sign-efi-sig-list: {err}"))?;
+
+            let _ = fs::remove_file(&temp_esl_path);
+
+            if !sign_output.status.success() {
+                let stderr = String::from_utf8_lossy(&sign_output.stderr);
+                return Err(anyhow!(
+                    "sign-efi-sig-list failed for {}: {}",
+                    dest_file,
+                    stderr.trim()
+                ));
+            }
+
+            println!("Created PK auth file: {} from source: {}", dest_file, source_file);
+            Ok(())
+        }
 
     pub fn create_kek(&self, name: &str, file_prefix: &str) -> Result<()> {
         let pk_key_pem = fs::read_to_string(self.storage_dir.join(file_prefix.to_owned() + ".key"))?;

@@ -31,7 +31,7 @@ const SEGMENT_ACTIONS: [&[&str]; 5] = [
         "Show dbx (hex preview)",
         "List BootXXXX entries",
     ],
-    &["Create PK files", "Create KEK files"],
+    &["Create PK files", "Create KEK files", "Create PK auth file"],
     &[
         "Register PK from file",
         "Register KEK from file",
@@ -60,8 +60,9 @@ enum ActionKey {
     ShowDb,
     ShowDbx,
     ListBootEntries,
-    CreatePk,
+    CreateKeyPair,
     CreateKek,
+    CreatePkEsl,
     RegisterPkFile,
     RegisterKekFile,
     RegisterDbFile,
@@ -285,9 +286,9 @@ fn run_current_action(app: &mut App) {
         ActionKey::ShowDb => app.logs.extend(preview_key_bytes("db")),
         ActionKey::ShowDbx => app.logs.extend(preview_key_bytes("dbx")),
         ActionKey::ListBootEntries => app.logs.extend(list_boot_entries()),
-        ActionKey::CreatePk => {
+        ActionKey::CreateKeyPair => {
             let creator = VarCreator::new();
-            match creator.create_pk(&app.create_pk_name, &app.create_pk_prefix) {
+            match creator.create_key_pair(&app.create_pk_name, &app.create_pk_prefix) {
                 Ok(()) => app
                     .logs
                     .push(format!("PK created: {}.key/.crt", app.create_pk_prefix)),
@@ -301,6 +302,19 @@ fn run_current_action(app: &mut App) {
                 Err(err) => app.logs.push(format!("KEK creation failed: {err}")),
             }
         }
+        ActionKey::CreatePkEsl => {
+            if app.esl_source_file.is_empty() || app.esl_dest_file.is_empty() {
+                app.logs.push("Provide both source and destination file paths.".to_string());
+                trim_logs(&mut app.logs);
+                return;
+            }
+
+            let creator = VarCreator::new();
+            match creator.create_pk_file("", &app.esl_source_file, &app.esl_dest_file) {
+                Ok(()) => app.logs.push(format!("PK auth created: {}", app.esl_dest_file)),
+                Err(err) => app.logs.push(format!("PK auth creation failed: {err}")),
+            }
+        }
         ActionKey::RegisterPkFile => {
             if app.register_pk_path.is_empty() {
                 app.logs
@@ -309,7 +323,7 @@ fn run_current_action(app: &mut App) {
                 return;
             }
 
-            let mut writer = match VarWriter::default() {
+            let mut writer = match VarWriter::new() {
                 Ok(w) => w,
                 Err(err) => {
                     app.logs.push(format!("VarWriter init failed: {err}"));
@@ -331,7 +345,7 @@ fn run_current_action(app: &mut App) {
                 return;
             }
 
-            let mut writer = match VarWriter::default() {
+            let mut writer = match VarWriter::new() {
                 Ok(w) => w,
                 Err(err) => {
                     app.logs.push(format!("VarWriter init failed: {err}"));
@@ -353,7 +367,7 @@ fn run_current_action(app: &mut App) {
                 return;
             }
 
-            let mut writer = match VarWriter::default() {
+            let mut writer = match VarWriter::new() {
                 Ok(w) => w,
                 Err(err) => {
                     app.logs.push(format!("VarWriter init failed: {err}"));
@@ -375,7 +389,7 @@ fn run_current_action(app: &mut App) {
                 return;
             }
 
-            let mut writer = match VarWriter::default() {
+            let mut writer = match VarWriter::new() {
                 Ok(w) => w,
                 Err(err) => {
                     app.logs.push(format!("VarWriter init failed: {err}"));
@@ -729,8 +743,9 @@ fn build_logs_text(app: &App) -> String {
 
 fn details_field_count(action: ActionKey) -> usize {
     match action {
-        ActionKey::CreatePk => 2,
+        ActionKey::CreateKeyPair => 2,
         ActionKey::CreateKek => 2,
+        ActionKey::CreatePkEsl => 2,
         ActionKey::RegisterPkFile => 1,
         ActionKey::RegisterKekFile => 1,
         ActionKey::RegisterDbFile => 1,
@@ -743,13 +758,17 @@ fn details_field_count(action: ActionKey) -> usize {
 
 fn field_label(action: ActionKey, idx: usize) -> &'static str {
     match action {
-        ActionKey::CreatePk => match idx {
+        ActionKey::CreateKeyPair => match idx {
             0 => "PK common name",
             _ => "PK file prefix",
         },
         ActionKey::CreateKek => match idx {
             0 => "KEK common name",
             _ => "Signing PK prefix",
+        },
+        ActionKey::CreatePkEsl => match idx {
+            0 => "Source cert file",
+            _ => "Destination ESL file",
         },
         ActionKey::RegisterPkFile => "PK file path",
         ActionKey::RegisterKekFile => "KEK file path",
@@ -763,7 +782,7 @@ fn field_label(action: ActionKey, idx: usize) -> &'static str {
 
 fn get_field<'a>(app: &'a App, action: ActionKey, idx: usize) -> Option<&'a str> {
     match action {
-        ActionKey::CreatePk => match idx {
+        ActionKey::CreateKeyPair => match idx {
             0 => Some(&app.create_pk_name),
             1 => Some(&app.create_pk_prefix),
             _ => None,
@@ -771,6 +790,11 @@ fn get_field<'a>(app: &'a App, action: ActionKey, idx: usize) -> Option<&'a str>
         ActionKey::CreateKek => match idx {
             0 => Some(&app.create_kek_name),
             1 => Some(&app.create_kek_pk_prefix),
+            _ => None,
+        },
+        ActionKey::CreatePkEsl => match idx {
+            0 => Some(&app.esl_source_file),
+            1 => Some(&app.esl_dest_file),
             _ => None,
         },
         ActionKey::RegisterPkFile => Some(&app.register_pk_path),
@@ -785,7 +809,7 @@ fn get_field<'a>(app: &'a App, action: ActionKey, idx: usize) -> Option<&'a str>
 
 fn get_field_mut<'a>(app: &'a mut App, action: ActionKey, idx: usize) -> Option<&'a mut String> {
     match action {
-        ActionKey::CreatePk => match idx {
+        ActionKey::CreateKeyPair => match idx {
             0 => Some(&mut app.create_pk_name),
             1 => Some(&mut app.create_pk_prefix),
             _ => None,
@@ -793,6 +817,11 @@ fn get_field_mut<'a>(app: &'a mut App, action: ActionKey, idx: usize) -> Option<
         ActionKey::CreateKek => match idx {
             0 => Some(&mut app.create_kek_name),
             1 => Some(&mut app.create_kek_pk_prefix),
+            _ => None,
+        },
+        ActionKey::CreatePkEsl => match idx {
+            0 => Some(&mut app.esl_source_file),
+            1 => Some(&mut app.esl_dest_file),
             _ => None,
         },
         ActionKey::RegisterPkFile => Some(&mut app.register_pk_path),
@@ -818,6 +847,8 @@ struct App {
     create_pk_prefix: String,
     create_kek_name: String,
     create_kek_pk_prefix: String,
+    esl_source_file: String,
+    esl_dest_file: String,
     register_pk_path: String,
     register_kek_path: String,
     register_db_path: String,
@@ -835,8 +866,9 @@ impl App {
             (1, 2) => ActionKey::ShowDb,
             (1, 3) => ActionKey::ShowDbx,
             (1, _) => ActionKey::ListBootEntries,
-            (2, 0) => ActionKey::CreatePk,
-            (2, _) => ActionKey::CreateKek,
+            (2, 0) => ActionKey::CreateKeyPair,
+            (2, 1) => ActionKey::CreateKek,
+            (2, 2) => ActionKey::CreatePkEsl,
             (3, 0) => ActionKey::RegisterPkFile,
             (3, 1) => ActionKey::RegisterKekFile,
             (3, 2) => ActionKey::RegisterDbFile,
@@ -863,6 +895,8 @@ impl Default for App {
             create_pk_prefix: String::new(),
             create_kek_name: String::new(),
             create_kek_pk_prefix: String::new(),
+            esl_source_file: String::new(),
+            esl_dest_file: String::new(),
             register_pk_path: String::new(),
             register_kek_path: String::new(),
             register_db_path: String::new(),

@@ -15,15 +15,15 @@ pub struct VarWriter {
 }
 
 impl VarWriter {
-	pub fn default() -> Result<Self> {
+	pub fn new() -> Result<Self> {
 		Ok(Self {
 			manager: efivar::system(),
 		})
 	}
 
-	pub fn write_pk_from_file<P: AsRef<Path>>(&mut self, file_path: P) -> Result<()> {
-		let data = fs::read(file_path.as_ref())
-			.with_context(|| format!("cannot read PK file: {}", file_path.as_ref().display()))?;
+	pub fn write_pk_from_file(&mut self, file_path: &str) -> Result<()> {
+		let data = fs::read(file_path)
+			.with_context(|| format!("cannot read PK file: {}", file_path))?;
 		self.write_pk(&data)
 	}
 
