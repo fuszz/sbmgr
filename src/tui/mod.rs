@@ -275,7 +275,14 @@ fn move_down(app: &mut App) {
 
 fn run_current_action(app: &mut App) {
     app.last_action = current_action_title(app).to_string();
-    app.logs.clear();
+    
+    // Add separator if there are previous logs
+    if !app.logs.is_empty() {
+        app.logs.push("=".repeat(50).to_string());
+    }
+    
+    // Add action header
+    app.logs.push(format!(">>> {}", app.last_action));
     app.log_scroll = 0;
 
     match app.current_action() {
@@ -310,7 +317,7 @@ fn run_current_action(app: &mut App) {
             }
 
             let creator = VarCreator::new();
-            match creator.create_pk_file("", &app.esl_source_file, &app.esl_dest_file) {
+            match creator.sign_efi_var_file("", &app.esl_source_file, &app.esl_dest_file) {
                 Ok(()) => app.logs.push(format!("PK auth created: {}", app.esl_dest_file)),
                 Err(err) => app.logs.push(format!("PK auth creation failed: {err}")),
             }
@@ -438,8 +445,8 @@ fn run_current_action(app: &mut App) {
 }
 
 fn trim_logs(logs: &mut Vec<String>) {
-    if logs.len() > 256 {
-        let to_drop = logs.len() - 256;
+    if logs.len() > 1024 {
+        let to_drop = logs.len() - 1024;
         logs.drain(0..to_drop);
     }
 }
@@ -729,13 +736,11 @@ fn build_fields_text(app: &App) -> String {
 
 fn build_logs_text(app: &App) -> String {
     let mut lines = Vec::new();
-    lines.push(format!("Last action: {}", app.last_action));
-    lines.push(String::new());
 
     if app.logs.is_empty() {
-        lines.push("No output.".to_string());
+        lines.push("No actions performed yet.".to_string());
     } else {
-        lines.extend(app.logs.iter().map(|line| format!("- {line}")));
+        lines.extend(app.logs.iter().cloned());
     }
 
     lines.join("\n")

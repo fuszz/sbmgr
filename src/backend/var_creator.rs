@@ -39,57 +39,65 @@ impl VarCreator {
         self.save_key_and_cert(file_prefix, &key_pair.serialize_pem(), &cert.pem())?;
         Ok(())
     }
-    pub fn create_pk_file(&self, _name: &str, source_file: &str, dest_file: &str) -> Result<()> {
+
+    fn run_efi_command(&self, cmd_name: &str, mut cmd: Command) -> Result<()> {
+        let output = cmd
+            .output()
+            .map_err(|err| anyhow!("failed to run {}: {err}", cmd_name))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("{} failed: {}", cmd_name, stderr.trim()));
+        }
+        Ok(())
+    }
+
+    pub fn sign_efi_var_file(&self, var_type: &str, source_file: &str, dest_file: &str) -> Result<()> {
         let source_path = Path::new(source_file);
         let key_path = source_path.with_extension("key");
 
         if !key_path.exists() {
             return Err(anyhow!(
-                "missing PK private key for signing: {}",
+                "missing private key for signing: {}",
                 key_path.display()
             ));
         }
 
         let temp_esl_path = Path::new(dest_file).with_extension("esl.tmp");
 
-        let cert_to_esl = Command::new("cert-to-efi-sig-list")
-            .arg(source_file)
-            .arg(&temp_esl_path)
-            .output()
-            .map_err(|err| anyhow!("failed to run cert-to-efi-sig-list: {err}"))?;
+        // Ensure temp file is always cleaned up, even on error
+        let result = (|| -> Result<()> {
+            self.run_efi_command(
+                "cert-to-efi-sig-list",
+                {
+                    let mut cmd = Command::new("cert-to-efi-sig-list");
+                    cmd.arg(source_file).arg(&temp_esl_path);
+                    cmd
+                },
+            )?;
 
-        if !cert_to_esl.status.success() {
-            let stderr = String::from_utf8_lossy(&cert_to_esl.stderr);
-            return Err(anyhow!(
-                "cert-to-efi-sig-list failed for {}: {}",
-                source_file,
-                stderr.trim()
-            ));
-        }
+            self.run_efi_command(
+                "sign-efi-sig-list",
+                {
+                    let mut cmd = Command::new("sign-efi-sig-list");
+                    cmd.args(["-c", source_file, "-k"])
+                        .arg(&key_path)
+                        .arg(var_type)
+                        .arg(&temp_esl_path)
+                        .arg(dest_file);
+                    cmd
+                },
+            )?;
 
-        let sign_output = Command::new("sign-efi-sig-list")
-            .args(["-c", source_file, "-k"])
-            .arg(&key_path)
-            .arg("PK")
-            .arg(&temp_esl_path)
-            .arg(dest_file)
-            .output()
-            .map_err(|err| anyhow!("failed to run sign-efi-sig-list: {err}"))?;
+            Ok(())
+        })();
 
         let _ = fs::remove_file(&temp_esl_path);
 
-        if !sign_output.status.success() {
-            let stderr = String::from_utf8_lossy(&sign_output.stderr);
-            return Err(anyhow!(
-                "sign-efi-sig-list failed for {}: {}",
-                dest_file,
-                stderr.trim()
-            ));
-        }
-
+        result?;
         println!(
-            "Created PK auth file: {} from source: {}",
-            dest_file, source_file
+            "Created {} auth file: {} from source: {}",
+            var_type, dest_file, source_file
         );
         Ok(())
     }
