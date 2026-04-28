@@ -295,7 +295,7 @@ fn run_current_action(app: &mut App) {
         ActionKey::ListBootEntries => app.logs.extend(list_boot_entries()),
         ActionKey::CreateKeyPair => {
             let creator = VarCreator::new();
-            match creator.create_key_pair(&app.create_pk_name, &app.create_pk_prefix) {
+            match creator.create_key_pair_files(&app.create_pk_name, &app.create_pk_prefix) {
                 Ok(()) => app
                     .logs
                     .push(format!("PK created: {}.key/.crt", app.create_pk_prefix)),
@@ -317,7 +317,7 @@ fn run_current_action(app: &mut App) {
             }
 
             let creator = VarCreator::new();
-            match creator.sign_efi_var_file("", &app.esl_source_file, &app.esl_dest_file) {
+            match creator.sign_efi_var_file("PK", &app.esl_source_file, &app.esl_dest_file) {
                 Ok(()) => app.logs.push(format!("PK auth created: {}", app.esl_dest_file)),
                 Err(err) => app.logs.push(format!("PK auth creation failed: {err}")),
             }
@@ -773,7 +773,7 @@ fn field_label(action: ActionKey, idx: usize) -> &'static str {
         },
         ActionKey::CreatePkEsl => match idx {
             0 => "Source cert file",
-            _ => "Destination ESL file",
+            _ => "Destination auth file",
         },
         ActionKey::RegisterPkFile => "PK file path",
         ActionKey::RegisterKekFile => "KEK file path",
