@@ -1,5 +1,5 @@
 mod backend;
-mod tui;
+// mod tui;
 use anyhow::Result;
 fn main() -> Result<()> {
     let creator = backend::var_creator::VarCreator::new();
