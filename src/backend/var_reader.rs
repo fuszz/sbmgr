@@ -1,10 +1,8 @@
-use std::{any, env::var, str::FromStr};
-use std::process::Command;
-use std::env::consts::OS;
-use anyhow::{self, Context, Result, ensure};
+use std::str::FromStr;
+use anyhow::Result;
 use efivar::{
     VarManager,
-    boot::{self, BootEntry},
+    boot::BootEntry,
     efi,
 };
 use uuid::Uuid;

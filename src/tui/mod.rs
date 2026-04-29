@@ -31,7 +31,10 @@ const SEGMENT_ACTIONS: [&[&str]; 5] = [
         "Show dbx (hex preview)",
         "List BootXXXX entries",
     ],
-    &["Create PK files", "Create KEK files", "Create PK auth file"],
+    &[  
+        "Create PK / KEK key pair files",
+        "Create PK auth file"
+    ],
     &[
         "Register PK from file",
         "Register KEK from file",
@@ -61,7 +64,6 @@ enum ActionKey {
     ShowDbx,
     ListBootEntries,
     CreateKeyPair,
-    CreateKek,
     CreatePkEsl,
     RegisterPkFile,
     RegisterKekFile,
@@ -81,10 +83,6 @@ pub fn run() -> Result<()> {
     let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
 
     let mut app = App::default();
-    app.create_pk_name = "SecureBoot PK".to_string();
-    app.create_pk_prefix = "fancy_PK".to_string();
-    app.create_kek_name = "SecureBoot KEK".to_string();
-    app.create_kek_pk_prefix = "fancy_PK".to_string();
 
     let result = run_loop(&mut terminal, &mut app);
 
@@ -295,18 +293,11 @@ fn run_current_action(app: &mut App) {
         ActionKey::ListBootEntries => app.logs.extend(list_boot_entries()),
         ActionKey::CreateKeyPair => {
             let creator = VarCreator::new();
-            match creator.create_key_pair_files(&app.create_pk_name, &app.create_pk_prefix) {
+            match creator.create_key_pair(&app.create_key_pair_name, &app.create_key_pair_prefix) {
                 Ok(()) => app
                     .logs
-                    .push(format!("PK created: {}.key/.crt", app.create_pk_prefix)),
+                    .push(format!("Key pair created: {}.key, {}.crt", app.create_key_pair_prefix, app.create_key_pair_prefix)),
                 Err(err) => app.logs.push(format!("PK creation failed: {err}")),
-            }
-        }
-        ActionKey::CreateKek => {
-            let creator = VarCreator::new();
-            match creator.create_kek(&app.create_kek_name, &app.create_kek_pk_prefix) {
-                Ok(()) => app.logs.push("KEK created: KEK.key/.crt".to_string()),
-                Err(err) => app.logs.push(format!("KEK creation failed: {err}")),
             }
         }
         ActionKey::CreatePkEsl => {
@@ -749,7 +740,6 @@ fn build_logs_text(app: &App) -> String {
 fn details_field_count(action: ActionKey) -> usize {
     match action {
         ActionKey::CreateKeyPair => 2,
-        ActionKey::CreateKek => 2,
         ActionKey::CreatePkEsl => 2,
         ActionKey::RegisterPkFile => 1,
         ActionKey::RegisterKekFile => 1,
@@ -766,10 +756,6 @@ fn field_label(action: ActionKey, idx: usize) -> &'static str {
         ActionKey::CreateKeyPair => match idx {
             0 => "PK common name",
             _ => "PK file prefix",
-        },
-        ActionKey::CreateKek => match idx {
-            0 => "KEK common name",
-            _ => "Signing PK prefix",
         },
         ActionKey::CreatePkEsl => match idx {
             0 => "Source cert file",
@@ -788,13 +774,8 @@ fn field_label(action: ActionKey, idx: usize) -> &'static str {
 fn get_field<'a>(app: &'a App, action: ActionKey, idx: usize) -> Option<&'a str> {
     match action {
         ActionKey::CreateKeyPair => match idx {
-            0 => Some(&app.create_pk_name),
-            1 => Some(&app.create_pk_prefix),
-            _ => None,
-        },
-        ActionKey::CreateKek => match idx {
-            0 => Some(&app.create_kek_name),
-            1 => Some(&app.create_kek_pk_prefix),
+            0 => Some(&app.create_key_pair_name),
+            1 => Some(&app.create_key_pair_prefix),
             _ => None,
         },
         ActionKey::CreatePkEsl => match idx {
@@ -815,13 +796,8 @@ fn get_field<'a>(app: &'a App, action: ActionKey, idx: usize) -> Option<&'a str>
 fn get_field_mut<'a>(app: &'a mut App, action: ActionKey, idx: usize) -> Option<&'a mut String> {
     match action {
         ActionKey::CreateKeyPair => match idx {
-            0 => Some(&mut app.create_pk_name),
-            1 => Some(&mut app.create_pk_prefix),
-            _ => None,
-        },
-        ActionKey::CreateKek => match idx {
-            0 => Some(&mut app.create_kek_name),
-            1 => Some(&mut app.create_kek_pk_prefix),
+            0 => Some(&mut app.create_key_pair_name),
+            1 => Some(&mut app.create_key_pair_prefix),
             _ => None,
         },
         ActionKey::CreatePkEsl => match idx {
@@ -848,10 +824,8 @@ struct App {
     logs: Vec<String>,
     last_action: String,
     log_scroll: usize,
-    create_pk_name: String,
-    create_pk_prefix: String,
-    create_kek_name: String,
-    create_kek_pk_prefix: String,
+    create_key_pair_name: String,
+    create_key_pair_prefix: String,
     esl_source_file: String,
     esl_dest_file: String,
     register_pk_path: String,
@@ -872,7 +846,6 @@ impl App {
             (1, 3) => ActionKey::ShowDbx,
             (1, _) => ActionKey::ListBootEntries,
             (2, 0) => ActionKey::CreateKeyPair,
-            (2, 1) => ActionKey::CreateKek,
             (2, 2) => ActionKey::CreatePkEsl,
             (3, 0) => ActionKey::RegisterPkFile,
             (3, 1) => ActionKey::RegisterKekFile,
@@ -896,10 +869,8 @@ impl Default for App {
             logs: Vec::new(),
             last_action: "None".to_string(),
             log_scroll: 0,
-            create_pk_name: String::new(),
-            create_pk_prefix: String::new(),
-            create_kek_name: String::new(),
-            create_kek_pk_prefix: String::new(),
+            create_key_pair_name: String::new(),
+            create_key_pair_prefix: String::new(),
             esl_source_file: String::new(),
             esl_dest_file: String::new(),
             register_pk_path: String::new(),

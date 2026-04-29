@@ -19,14 +19,14 @@ pub struct VarCreator {
 impl VarCreator {
     pub fn new() -> Self {
         let user_dirs = UserDirs::new().expect("Unable to find current user's home directory");
-        let proj_dirs = user_dirs.home_dir();
+        let proj_dirs = user_dirs.home_dir().join(".sbmgr");
         let storage_dir = proj_dirs.to_path_buf();
         fs::create_dir_all(proj_dirs).expect("Unable to create directory");
         Self::apply_secure_permissions(&storage_dir);
         Self { storage_dir }
     }
 
-    pub fn create_key_pair_files(&self, name: &str, file_prefix: &str) -> Result<()> {
+    pub fn create_key_pair(&self, name: &str, file_prefix: &str) -> Result<()> {
         let mut params = CertificateParams::default();
         let mut dn = DistinguishedName::new();
         dn.push(rcgen::DnType::CommonName, name);
@@ -40,15 +40,11 @@ impl VarCreator {
         Ok(())
     }
 
-    pub fn create_key_pair(&self, name: &str, file_prefix: &str) -> Result<()> {
-        self.create_key_pair_files(name, file_prefix)
-    }
+    pub fn create_kek(&self, name: &str, file_prefix: &str, signing_pk_prefix: &str) -> Result<()> {
+        self.create_key_pair(name, file_prefix)?;
 
-    pub fn create_kek(&self, name: &str, signing_pk_prefix: &str) -> Result<()> {
-        self.create_key_pair_files(name, "KEK")?;
-
-        let source_file = self.storage_dir.join("KEK.crt");
-        let dest_file = self.storage_dir.join("KEK.auth");
+        let source_file = self.storage_dir.join(format!("{}.crt", file_prefix));
+        let dest_file = self.storage_dir.join(format!("{}.key", file_prefix));
         let signer_cert = self.storage_dir.join(format!("{}.crt", signing_pk_prefix));
         let signer_key = self.storage_dir.join(format!("{}.key", signing_pk_prefix));
 
@@ -61,42 +57,29 @@ impl VarCreator {
         )
     }
 
-    pub fn sign_certificate_with_private_key(
-        &self,
-        certificate_file_path: &str,
-        private_key_file_path: &str,
-    ) -> Result<()> {
-        let certificate_path = PathBuf::from(certificate_file_path);
-        let private_key_path = PathBuf::from(private_key_file_path);
-        if !certificate_path.exists() {
-            return Err(anyhow!(
-                "Invalid certificate file path: {}",
-                certificate_path.display()
-            ));
-        }
-        if !private_key_path.exists() {
-            return Err(anyhow!(
-                "Invalid private key file path: {}",
-                private_key_path.display()
-            ));
-        }
+pub fn sign_certificate_with_private_key(
+    &self,
+    certificate_file_path: &str,
+    private_key_file_path: &str,
+) -> Result<()> {
+    let certificate_path = self.storage_dir.join(format!("{}.crt", certificate_file_path));
+    let private_key_path = self.storage_dir.join(format!("{}.key", private_key_file_path));
 
-        let certificate_bytes = fs::read(&certificate_path)?;
-        let private_key_pem = fs::read_to_string(&private_key_path)?;
-
-        let private_key = RsaPrivateKey::from_pkcs8_pem(&private_key_pem)?;
-        let signing_key = SigningKey::<RsaSha256>::new(private_key);
-
-        let mut hasher = Sha256::new();
-        hasher.update(&certificate_bytes);
-        let certificate_hash = hasher.finalize();
-
-        let signature: rsa::pkcs1v15::Signature = signing_key.sign(&certificate_hash);
-        let signature_path = PathBuf::from(format!("{}.sig", certificate_file_path));
-        fs::write(&signature_path, signature.to_vec())?;
-
-        Ok(())
+    if !certificate_path.exists() {
+        return Err(anyhow!("Invalid certificate file path: {}", certificate_path.display()));
     }
+    if !private_key_path.exists() {
+        return Err(anyhow!("Invalid private key file path: {}", private_key_path.display()));
+    }
+    let certificate_bytes = fs::read(&certificate_path)?;
+    let private_key_pem = fs::read_to_string(&private_key_path)?;
+    let private_key = RsaPrivateKey::from_pkcs8_pem(&private_key_pem)?;
+    let signing_key = SigningKey::<RsaSha256>::new(private_key);
+    let signature = signing_key.sign(&certificate_bytes);
+    let signature_path = self.storage_dir.join(format!("{}.crt.sig", certificate_file_path));
+    fs::write(&signature_path, signature.to_vec())?;
+    Ok(())
+}
 
     fn run_efi_command(&self, cmd_name: &str, mut cmd: Command) -> Result<()> {
         let output = cmd
@@ -187,17 +170,11 @@ impl VarCreator {
         }
         if !signer_cert_path.exists() {
             return Err(anyhow!(
-                "missing signer certificate for {}: {}",
-                var_type,
-                signer_cert_path.display()
-            ));
+                "missing signer certificate for {}: {}", var_type, signer_cert_path.display()));
         }
         if !signer_key_path.exists() {
             return Err(anyhow!(
-                "missing signer private key for {}: {}",
-                var_type,
-                signer_key_path.display()
-            ));
+                "missing signer private key for {}: {}", var_type, signer_key_path.display()));
         }
 
         let temp_esl_path = Path::new(dest_file).with_extension("esl.tmp");
@@ -269,7 +246,6 @@ impl VarCreator {
 
         let mut cert_file = File::create(&cert_path)?;
         cert_file.write_all(cert_pem.as_bytes())?;
-        println!("Saved key and certificate files");
         Ok(())
     }
 
