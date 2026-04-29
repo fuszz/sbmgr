@@ -4,5 +4,7 @@ pub mod var_creator;
 pub mod var_writer;
 pub mod shim;
 pub mod os;
-pub mod cert_to_esl;
 pub mod esl_to_auth;
+pub mod storage_handler;
+pub mod auth_creator;
+pub mod guids;

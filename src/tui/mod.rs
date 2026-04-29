@@ -308,10 +308,10 @@ fn run_current_action(app: &mut App) {
             }
 
             let creator = VarCreator::new();
-            match creator.sign_efi_var_file("PK", &app.esl_source_file, &app.esl_dest_file) {
-                Ok(()) => app.logs.push(format!("PK auth created: {}", app.esl_dest_file)),
-                Err(err) => app.logs.push(format!("PK auth creation failed: {err}")),
-            }
+            // match creator.sign_efi_var_file("PK", &app.esl_source_file, &app.esl_dest_file) {
+            //     Ok(()) => app.logs.push(format!("PK auth created: {}", app.esl_dest_file)),
+            //     Err(err) => app.logs.push(format!("PK auth creation failed: {err}")),
+            // }
         }
         ActionKey::RegisterPkFile => {
             if app.register_pk_path.is_empty() {
