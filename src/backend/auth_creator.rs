@@ -31,7 +31,7 @@ pub fn prepare_auth_buffer(var_name: &str, esl_data: &[u8], efi_time: &[u8; 16])
     }
     auth_buffer.write_all(&EFI_GLOBAL_VARIABLE_GUID.to_bytes_le())?;
     auth_buffer.write_all(&EFI_PK_VARIABLE_ATTRIBUTES.to_le_bytes())?;
-    auth_buffer.write_all(efi_time);
+    auth_buffer.write_all(efi_time)?;
     auth_buffer.write_all(&esl_data)?;
     Ok(auth_buffer)
 }
@@ -67,11 +67,7 @@ pub fn create_auth_file(
     // --- EFI_VARIABLE_AUTHENTICATION_2 ---
     auth_file.write_all(&efi_time)?; // Znacznik czasu
 
-    // --- WIN_CERTIFICATE_UEFI_GUID ---
-    let cert_type_guid: [u8; 16] = [
-        // EFI_CERT_TYPE_PKCS7_GUID
-        0x9d, 0xd2, 0xaf, 0x4a, 0xdf, 0x68, 0xee, 0x49, 0x8a, 0xa9, 0x34, 0x7d, 0x37, 0x56, 0x65, 0xa7,
-    ];
+    let cert_type_guid = EFI_CERT_TYPE_PKCS7_GUID.to_bytes_le();
     let win_cert_len = (24 + pkcs7_der.len()) as u32; // 24 = nagłówek WIN_CERT + GUID
 
     auth_file.write_all(&win_cert_len.to_le_bytes())?; // dwLength
@@ -80,8 +76,7 @@ pub fn create_auth_file(
     auth_file.write_all(&cert_type_guid)?; // CertType (PKCS7)
     auth_file.write_all(&pkcs7_der)?;
 
-    // Na samym końcu dodajemy oryginalny payload (.esl)
     auth_file.write_all(&esl_data)?;
-    sh.write_to_file(auth_path, "auth",  &auth_file);
+    sh.write_to_file(auth_path, "auth",  &auth_file)?;
     Ok(())
 }
