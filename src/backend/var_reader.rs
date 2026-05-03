@@ -15,7 +15,7 @@ pub struct VarReader {
 }
 
 impl VarReader {
-    pub fn default() -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Ok(VarReader {
             manager: efivar::system(),
             variables: vec![],
