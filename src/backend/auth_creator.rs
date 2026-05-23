@@ -44,27 +44,21 @@ pub fn create_auth_file(
     auth_path: &str,
     sh: &StorageHandler
 ) -> Result<()> {
-    let cert_bytes = sh.read_from_file(cert_path, "cer")?;
+    let cert_bytes: Vec<u8> = sh.read_from_file(cert_path, "cer")?;
     let key_bytes = sh.read_from_file(private_key_path, "der")?;
     let esl_data = sh.read_from_file(esl_path, "esl")?;
     let cert = x509::X509::from_pem(&cert_bytes)?;
     let pkey = pkey::PKey::private_key_from_pem(&key_bytes)?;
     let efi_time = generate_efi_time();
 
-    // 2. Przygotowanie bufora do autoryzacji (To jest to, co faktycznie podpisujemy)
-    // Bufor: Nazwa Zmiennej (UTF-16LE) + GUID Zmiennej + Atrybuty + EFI_TIME + Dane ESL
     let auth_buffer: Vec<u8> = prepare_auth_buffer(var_name, &esl_data, &efi_time)?;
 
-    // 3. Tworzenie podpisu PKCS#7 (odłączonego) za pomocą OpenSSL
     let certs = stack::Stack::new()?;
     let flags = pkcs7::Pkcs7Flags::BINARY | pkcs7::Pkcs7Flags::DETACHED;
     let pkcs7 = pkcs7::Pkcs7::sign(&cert, &pkey, &certs, &auth_buffer, flags)?;
     let pkcs7_der = pkcs7.to_der()?;
 
-    // 4. Składanie pliku .auth (EFI_VARIABLE_AUTHENTICATION_2 + Payload)
     let mut auth_file = Vec::new();
-
-    // --- EFI_VARIABLE_AUTHENTICATION_2 ---
     auth_file.write_all(&efi_time)?; // Znacznik czasu
 
     let cert_type_guid = EFI_CERT_TYPE_PKCS7_GUID.to_bytes_le();

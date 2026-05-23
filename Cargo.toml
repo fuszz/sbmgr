@@ -19,6 +19,7 @@ ratatui = "0.30.0"
 rcgen = { version = "0.14.7", features = ["pem", "x509-parser", "aws_lc_rs"] }
 regex = "1.12.3"
 rsa = { version = "0.9.10", features = ["sha2"] }
+rustls-pki-types = "1.14.1"
 sha2 = { version = "0.11.0", features = ["oid"] }
 sysinfo = "0.38.4"
 uefi-raw = "0.14.0"

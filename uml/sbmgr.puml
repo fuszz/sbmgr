@@ -1,0 +1,144 @@
+@startuml
+"SBMgr" as package
+
+class Backend {
+  +storage_handler: StorageHandler
+  +var_reader: VarReader
+  +var_writer: VarWriter
+  +new(): Backend
+  +list_variables(): Vec<String>
+}
+
+note right of Backend
+  Backend: centralny punkt logiki aplikacji.
+  - Inicjalizuje warstwę przechowywania i dostęp do zmiennych UEFI.
+  - Używany przez interfejs TUI do pobierania listy zmiennych.
+end note
+
+class StorageHandler {
+  -storage_dir: PathBuf
+  +new(): StorageHandler
+  +read_from_file(file_path: &str, file_suffix: &str): Vec<u8>
+  +write_to_file(file_path: &str, file_suffix: &str, contents: &[u8])
+}
+
+note right of StorageHandler
+  StorageHandler: zarządza prostym katalogiem ~/.sbmgr.
+  - Tworzy katalog, czyta i zapisuje pliki binarne używane do przechowywania kopii
+    zmiennych lub plików autoryzacyjnych.
+end note
+
+class VarReader {
+  +manager: Box<dyn VarManager>
+  +variables: Vec<(String, Uuid)>
+  +new(): VarReader
+  +update_variable_guids(): Result<()>
+  +find_variable_guid(var: &str): Result<Uuid>
+  +is_secure_boot_active(): Result<bool>
+  +is_setup_mode_active(): Result<bool>
+  +is_shim_active(): Result<bool>
+  +is_audit_mode_active(): Result<bool>
+  +get_pk(): Result<Vec<u8>>
+  +get_kek(): Result<Vec<u8>>
+  +get_db(): Result<Vec<u8>>
+  +get_dbx(): Result<Vec<u8>>
+  +get_boot_order(): Result<Vec<u16>>
+  +get_current_boot(): Result<Vec<u8>>
+  +get_boot_entries_list(): Result<Vec<(String, Uuid)>>
+  +get_boot_entry(boot_id: u16): Result<BootEntry>
+}
+
+note right of VarReader
+  VarReader: odczytuje zmienne UEFI przez `efivar::VarManager`.
+  - Trzyma cache zmiennych (`variables`) mapując nazwę -> GUID.
+  - Dostarcza helpery do sprawdzenia stanu SecureBoot, SetupMode, AuditMode oraz
+    do odczytu PK/KEK/db/dbx i wpisów boot.
+end note
+
+class VarWriter {
+  +manager: Box<dyn VarManager>
+  +new(): VarWriter
+  +write_pk_from_file(file_path: &str): Result<()>
+  +write_kek_from_file(file_path: &str): Result<()>
+  +write_db_from_file(file_path: &str): Result<()>
+  +write_dbx_from_file(file_path: &str): Result<()>
+  -resolve_auth_input_path(input: &Path, default_stem: &str): PathBuf
+  -write_authenticated_var(name: &str, vendor: Uuid, data: &[u8]): Result<()>
+}
+
+note right of VarWriter
+  VarWriter: zapisuje zmienne UEFI (PK/KEK/db/dbx) używając `efivar::VarManager`.
+  - Obsługuje wyszukiwanie plików .auth w bieżącym katalogu i w katalogu domowym.
+  - Ustawia odpowiednie atrybuty zmiennych przy zapisie.
+end note
+
+class TuiApp {
+  +should_quit: bool
+  +menu_state: ListState
+  +menu_items: Vec<&'static str>
+  +variables: Vec<String>
+  +message: Option<String>
+  +backend: Backend
+  +new(): TuiApp
+  +refresh(): anyhow::Result<()>
+  +move_down()
+  +move_up()
+  +handle_action(action: Action): anyhow::Result<()>
+  +run(): anyhow::Result<()>
+}
+
+note right of TuiApp
+  TuiApp: terminalowy interfejs użytkownika oparty na `ratatui`.
+  - Utrzymuje stan menu, listę zmiennych i referencję do `Backend`.
+  - Obsługuje akcje: odświeżenie, nawigację i wyjście.
+end note
+
+class Areas {
+  -menu: Rect
+  -status: Rect
+  -dialog: Rect
+}
+
+enum Action {
+  Quit
+  Refresh
+  MoveUp
+  MoveDown
+  None
+}
+
+note right of Areas
+  Areas: pomocnicza struktura do layoutu UI (prostokąty dla sekcji).
+end note
+
+class Guids {
+  +EFI_CERT_X509_GUID: Uuid
+  +EFI_CERT_TYPE_PKCS7_GUID: Uuid
+  +EFI_GLOBAL_VARIABLE_GUID: Uuid
+  +EFI_IMAGE_SECURITY_DATABASE_GUID: Uuid
+  +EFI_PK_VARIABLE_ATTRIBUTES: u32
+}
+
+note right of Guids
+  Zawiera stałe GUID używane przy odczycie/zapisie zmiennych UEFI.
+end note
+
+interface VarManager
+
+Backend o-- StorageHandler
+Backend o-- VarReader
+Backend o-- VarWriter
+TuiApp o-- Backend
+VarReader ..> BootEntry
+VarReader ..> Uuid
+VarWriter ..> Uuid
+VarReader ..> VarManager
+VarWriter ..> VarManager
+
+note left
+  Wskazówki do importu do draw.io:
+  - W draw.io wybierz Insert → Advanced → PlantUML i wklej zawartość pliku.
+  - Możesz też wygenerować obraz przez PlantUML i zaimportować jako grafikę.
+end note
+
+@enduml

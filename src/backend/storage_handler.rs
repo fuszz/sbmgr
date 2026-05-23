@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::PathBuf
-    };
+use std::{fs, path::PathBuf};
 use directories::UserDirs;
 use anyhow::Result;
 pub struct StorageHandler {

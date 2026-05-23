@@ -23,6 +23,7 @@ impl VarReader {
     }
 
     pub fn update_variable_guids(&mut self) -> Result<()> {
+        self.variables.clear();
         let all_vars = self.manager.get_all_vars()?;
         for var in all_vars {
             self.variables.push((String::from(var.name()), Uuid::from_str(&var.vendor().to_string())?))
@@ -58,25 +59,35 @@ impl VarReader {
     }
 
     pub fn is_shim_active(&self) -> Result<bool> {
-        if ! sysinfo::System::name().unwrap().contains("Linux") {
+        let os_name = match sysinfo::System::name() {
+            Some(name) => name,
+            None => return Ok(false),
+        };
+
+        if !os_name.contains("Linux") {
             Ok(false)
         } else {
-            let boot_id = u16::from_le_bytes(
-                    self.get_current_boot()?[0..2]
-                    .try_into()
-                    .unwrap()
-                );
-            if self.get_boot_entry(boot_id)?
-                .file_path_list
-                .as_ref()
-                .expect("Cannot find path") 
-                .file_path.path
-                .to_string().
-                contains("shim") {
-                    Ok(true)
-                } else {
-                    Ok(false)
-                }      
+            let current_boot = self.get_current_boot()?;
+            if current_boot.len() < 2 {
+                return Ok(false);
+            }
+
+            let boot_id = u16::from_le_bytes([current_boot[0], current_boot[1]]);
+            let boot_entry = match self.get_boot_entry(boot_id) {
+                Ok(entry) => entry,
+                Err(_) => return Ok(false),
+            };
+
+            let file_path_list = match boot_entry.file_path_list.as_ref() {
+                Some(path_list) => path_list,
+                None => return Ok(false),
+            };
+
+            Ok(file_path_list
+                .file_path
+                .path
+                .to_string()
+                .contains("shim"))
         }
     }
 
