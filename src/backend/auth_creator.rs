@@ -36,17 +36,12 @@ pub fn prepare_auth_buffer(var_name: &str, esl_data: &[u8], efi_time: &[u8; 16])
     Ok(auth_buffer)
 }
 
-pub fn create_auth_file(
-    private_key_path: &str,
-    cert_path: &str,
+pub fn create_auth_data_data(
+    key_bytes: &[u8],
+    cert_bytes: &[u8],
+    esl_data: &[u8],
     var_name: &str,
-    esl_path: &str,
-    auth_path: &str,
-    sh: &StorageHandler
-) -> Result<()> {
-    let cert_bytes: Vec<u8> = sh.read_from_file(cert_path, "cer")?;
-    let key_bytes = sh.read_from_file(private_key_path, "der")?;
-    let esl_data = sh.read_from_file(esl_path, "esl")?;
+) -> Result<Vec<u8>> {
     let cert = x509::X509::from_pem(&cert_bytes)?;
     let pkey = pkey::PKey::private_key_from_pem(&key_bytes)?;
     let efi_time = generate_efi_time();
@@ -58,19 +53,83 @@ pub fn create_auth_file(
     let pkcs7 = pkcs7::Pkcs7::sign(&cert, &pkey, &certs, &auth_buffer, flags)?;
     let pkcs7_der = pkcs7.to_der()?;
 
-    let mut auth_file = Vec::new();
-    auth_file.write_all(&efi_time)?; // Znacznik czasu
+    let mut auth_data = Vec::new();
+    auth_data.write_all(&efi_time)?; // Znacznik czasu
 
     let cert_type_guid = EFI_CERT_TYPE_PKCS7_GUID.to_bytes_le();
     let win_cert_len = (24 + pkcs7_der.len()) as u32; // 24 = nagłówek WIN_CERT + GUID
 
-    auth_file.write_all(&win_cert_len.to_le_bytes())?; // dwLength
-    auth_file.write_all(&(0x0200u16).to_le_bytes())?; // wRevision
-    auth_file.write_all(&(0x0ef1u16).to_le_bytes())?; // wCertificateType (WIN_CERT_TYPE_EFI_GUID)
-    auth_file.write_all(&cert_type_guid)?; // CertType (PKCS7)
-    auth_file.write_all(&pkcs7_der)?;
+    auth_data.write_all(&win_cert_len.to_le_bytes())?; // dwLength
+    auth_data.write_all(&(0x0200u16).to_le_bytes())?; // wRevision
+    auth_data.write_all(&(0x0ef1u16).to_le_bytes())?; // wCertificateType (WIN_CERT_TYPE_EFI_GUID)
+    auth_data.write_all(&cert_type_guid)?; // CertType (PKCS7)
+    auth_data.write_all(&pkcs7_der)?;
 
-    auth_file.write_all(&esl_data)?;
-    sh.write_to_file(auth_path, "auth",  &auth_file)?;
-    Ok(())
+    auth_data.write_all(&esl_data)?;
+    Ok(auth_data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use openssl::{pkey::PKey, rsa::Rsa, x509::{X509NameBuilder, X509}, asn1::Asn1Time, hash::MessageDigest, x509::X509Builder, nid::Nid};
+
+    #[test]
+    fn prepare_auth_buffer_has_expected_prefix() {
+        let esl = b"ESLTEST";
+        let efi_time = generate_efi_time();
+        let buf = prepare_auth_buffer("PK", esl, &efi_time).expect("prepare");
+
+        // 'P' 'K' in UTF-16LE
+        assert_eq!(&buf[0..4], &[0x50, 0x00, 0x4B, 0x00]);
+
+        // next 16 bytes = EFI_GLOBAL_VARIABLE_GUID
+        assert_eq!(&buf[4..20], &EFI_GLOBAL_VARIABLE_GUID.to_bytes_le());
+
+        // next 4 bytes = attributes
+        let attrs = u32::from_le_bytes(buf[20..24].try_into().unwrap());
+        assert_eq!(attrs, EFI_PK_VARIABLE_ATTRIBUTES);
+
+        // next 16 bytes = efi_time
+        assert_eq!(&buf[24..40], &efi_time);
+
+        // tail ends with esl
+        assert_eq!(&buf[40..], esl);
+    }
+
+    #[test]
+    fn create_auth_data_data_includes_esl() {
+        // generate RSA key and a self-signed certificate
+        let rsa = Rsa::generate(2048).expect("rsa");
+        let pkey = PKey::from_rsa(rsa).expect("pkey");
+
+        // subject name
+        let mut name_builder = X509NameBuilder::new().expect("name builder");
+        name_builder.append_entry_by_nid(Nid::COMMONNAME, "sbmgr.test").expect("append cn");
+        let name = name_builder.build();
+
+        let mut builder = X509Builder::new().expect("x509 builder");
+        builder.set_version(2).expect("set version");
+        builder.set_subject_name(&name).expect("set subject");
+        builder.set_issuer_name(&name).expect("set issuer");
+        builder.set_pubkey(&pkey).expect("set pubkey");
+        let not_before = Asn1Time::days_from_now(0).expect("not before");
+        let not_after = Asn1Time::days_from_now(365).expect("not after");
+        builder.set_not_before(&not_before).expect("set nb");
+        builder.set_not_after(&not_after).expect("set na");
+        builder.sign(&pkey, MessageDigest::sha256()).expect("sign");
+        let cert = builder.build();
+
+        let cert_pem = cert.to_pem().expect("cert pem");
+        let key_pem = pkey.private_key_to_pem_pkcs8().expect("key pem");
+
+        let esl = b"ESL-DATA";
+        let auth = create_auth_data_data(&key_pem, &cert_pem, esl, "PK").expect("create auth");
+
+        // auth ends with esl data
+        assert!(auth.ends_with(esl));
+
+        // auth should be larger than esl + pkcs7 header (24) + efi_time (16)
+        assert!(auth.len() > esl.len() + 24 + 16);
+    }
 }

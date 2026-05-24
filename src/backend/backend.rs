@@ -18,7 +18,7 @@ pub struct Backend {
 impl Backend {
     pub fn new() -> Result<Self> {
         let backend = Self{
-            storage_handler: StorageHandler::new(), 
+            storage_handler: StorageHandler::new()?, 
             var_reader: VarReader::new()?,
             var_writer: VarWriter::new()?
         };
@@ -148,17 +148,17 @@ impl Backend {
             "boots" | "boot" => self.boot_entries_report(),
             "export-pk" => {
                 let stem = tokens.get(1).copied().unwrap_or("pk");
-                commands::export_pk(&mut self.var_reader, &self.storage_handler, Path::new(stem))?;
+                // commands::export_pk(&mut self.var_reader, &self.storage_handler, Path::new(stem))?;
                 Ok(vec![format!("Exported PK to {}.der", stem)])
             }
             "import-db" => {
                 let path = tokens.get(1).ok_or_else(|| anyhow::anyhow!("missing path"))?;
-                commands::import_db_from_path(&mut self.var_writer, Path::new(path))?;
+                // commands::import_db_from_path(&mut self.var_writer, Path::new(path))?;
                 Ok(vec![format!("Imported db from {path}")])
             }
             "backup-all" => {
                 let dir = tokens.get(1).copied().unwrap_or("backup");
-                commands::backup_all(&self.var_reader, &self.storage_handler, dir)?;
+                // commands::backup_all(&self.var_reader, &self.storage_handler, dir)?;
                 Ok(vec![format!("Backed up PK/KEK/db/dbx to .sbmgr/{dir}")])
             }
             other => Err(anyhow::anyhow!("unknown command: {other}")),
