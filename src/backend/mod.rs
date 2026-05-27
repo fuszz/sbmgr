@@ -7,5 +7,4 @@ pub mod storage_handler;
 pub mod auth_creator;
 pub mod guids;
 pub mod backend;
-pub mod commands;
 pub mod esl_creator;

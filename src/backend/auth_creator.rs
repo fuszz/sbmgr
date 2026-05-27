@@ -1,4 +1,3 @@
-use crate::backend::storage_handler::StorageHandler;
 use crate::backend::guids::*;
 use anyhow::Result;
 use openssl::{x509, pkey, stack, pkcs7};
@@ -25,10 +24,10 @@ pub fn generate_efi_time() -> [u8; 16] {
 
 pub fn prepare_auth_buffer(var_name: &str, esl_data: &[u8], efi_time: &[u8; 16]) -> Result<Vec<u8>> {
     let mut auth_buffer: Vec<u8> = Vec::new();
-    // Konwersja nazwy (np. "PK") na UTF-16LE bez null-terminatora na końcu
     for c in var_name.encode_utf16() {
         auth_buffer.extend_from_slice(&c.to_le_bytes());
     }
+
     auth_buffer.write_all(&EFI_GLOBAL_VARIABLE_GUID.to_bytes_le())?;
     auth_buffer.write_all(&EFI_PK_VARIABLE_ATTRIBUTES.to_le_bytes())?;
     auth_buffer.write_all(efi_time)?;
@@ -80,21 +79,21 @@ mod tests {
         let efi_time = generate_efi_time();
         let buf = prepare_auth_buffer("PK", esl, &efi_time).expect("prepare");
 
-        // 'P' 'K' in UTF-16LE
-        assert_eq!(&buf[0..4], &[0x50, 0x00, 0x4B, 0x00]);
+        // 'P' 'K' and trailing NUL in UTF-16LE
+        assert_eq!(&buf[0..6], &[0x50, 0x00, 0x4B, 0x00, 0x00, 0x00]);
 
         // next 16 bytes = EFI_GLOBAL_VARIABLE_GUID
-        assert_eq!(&buf[4..20], &EFI_GLOBAL_VARIABLE_GUID.to_bytes_le());
+        assert_eq!(&buf[6..22], &EFI_GLOBAL_VARIABLE_GUID.to_bytes_le());
 
         // next 4 bytes = attributes
-        let attrs = u32::from_le_bytes(buf[20..24].try_into().unwrap());
+        let attrs = u32::from_le_bytes(buf[22..26].try_into().unwrap());
         assert_eq!(attrs, EFI_PK_VARIABLE_ATTRIBUTES);
 
         // next 16 bytes = efi_time
-        assert_eq!(&buf[24..40], &efi_time);
+        assert_eq!(&buf[26..42], &efi_time);
 
         // tail ends with esl
-        assert_eq!(&buf[40..], esl);
+        assert_eq!(&buf[42..], esl);
     }
 
     #[test]

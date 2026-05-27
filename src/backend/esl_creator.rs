@@ -41,7 +41,7 @@ impl EfiSigList {
         };
         Self {
             signature_type: signature_type,
-            signature_list_size: 20,
+            signature_list_size: 28,
             signature_header_size: 0,
             signature_size: size,
             signature_header: vec![],
