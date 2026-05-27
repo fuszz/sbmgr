@@ -1,3 +1,4 @@
+use openssl::sha;
 use uuid::Uuid;
 use x509_parser::nom::AsBytes;
 use crate::backend::guids::*;
@@ -5,7 +6,7 @@ use anyhow::{ Ok, Result, Error };
 use std::io::Write;
 use pem::parse;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct SignatureData {
     owner: Uuid,
     data: Vec<u8>,
@@ -23,6 +24,7 @@ impl SignatureData {
     }
 }
 
+#[derive(Debug)]
 pub struct EfiSigList {
     signature_type: SignatureType,
     signature_list_size: u32,
@@ -122,6 +124,8 @@ impl EfiSigList {
         buffer.extend_from_slice(&self.signature_list_size.to_le_bytes());
         buffer.extend_from_slice(&self.signature_header_size.to_le_bytes());
         buffer.extend_from_slice(&self.signature_size.to_le_bytes());
+
+        println!("{:?}", self.signatures);
 
         for sig in &self.signatures {
             buffer.extend_from_slice(&sig.to_bytes());
