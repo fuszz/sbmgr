@@ -169,7 +169,7 @@ mod tests {
         esl.add_sha256_checksum_to_esl(&checksum, owner)
             .expect("sha256 entry creation");
 
-        assert_eq!(esl.signature_list_size, 68);
+        assert_eq!(esl.signature_list_size, 76);
         assert_eq!(esl.signatures.len(), 1);
         assert_eq!(esl.signatures[0].owner, owner);
         assert_eq!(esl.signatures[0].data, checksum);
@@ -209,7 +209,7 @@ mod tests {
         esl.add_rsa2048_public_key_to_esl(&public_key_pem, owner)
             .expect("rsa entry creation");
 
-        assert_eq!(esl.signature_list_size, 292);
+        assert_eq!(esl.signature_list_size, 300);
         assert_eq!(esl.signatures.len(), 1);
         assert_eq!(esl.signatures[0].owner, owner);
         assert_eq!(esl.signatures[0].data, public_key_der);
@@ -226,7 +226,7 @@ mod tests {
             .expect("x509 entry creation");
 
         assert_eq!(esl.signature_size, (16 + certificate_der.len()) as u32);
-        assert_eq!(esl.signature_list_size, (20 + 16 + certificate_der.len()) as u32);
+        assert_eq!(esl.signature_list_size, (28 + 16 + certificate_der.len()) as u32);
         assert_eq!(esl.signatures.len(), 1);
         assert_eq!(esl.signatures[0].owner, owner);
         assert_eq!(esl.signatures[0].data, certificate_der);

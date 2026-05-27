@@ -71,7 +71,7 @@ pub fn create_auth_data_data(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openssl::{pkey::PKey, rsa::Rsa, x509::{X509NameBuilder, X509}, asn1::Asn1Time, hash::MessageDigest, x509::X509Builder, nid::Nid};
+    use openssl::{pkey::PKey, rsa::Rsa, x509::{X509NameBuilder}, asn1::Asn1Time, hash::MessageDigest, x509::X509Builder, nid::Nid};
 
     #[test]
     fn prepare_auth_buffer_has_expected_prefix() {
@@ -80,20 +80,20 @@ mod tests {
         let buf = prepare_auth_buffer("PK", esl, &efi_time).expect("prepare");
 
         // 'P' 'K' and trailing NUL in UTF-16LE
-        assert_eq!(&buf[0..6], &[0x50, 0x00, 0x4B, 0x00, 0x00, 0x00]);
+        assert_eq!(&buf[0..4], &[0x50, 0x00, 0x4B, 0x00]);
 
         // next 16 bytes = EFI_GLOBAL_VARIABLE_GUID
-        assert_eq!(&buf[6..22], &EFI_GLOBAL_VARIABLE_GUID.to_bytes_le());
+        assert_eq!(&buf[4..20], &EFI_GLOBAL_VARIABLE_GUID.to_bytes_le());
 
         // next 4 bytes = attributes
-        let attrs = u32::from_le_bytes(buf[22..26].try_into().unwrap());
+        let attrs = u32::from_le_bytes(buf[20..24].try_into().unwrap());
         assert_eq!(attrs, EFI_PK_VARIABLE_ATTRIBUTES);
 
         // next 16 bytes = efi_time
-        assert_eq!(&buf[26..42], &efi_time);
+        assert_eq!(&buf[24..40], &efi_time);
 
         // tail ends with esl
-        assert_eq!(&buf[42..], esl);
+        assert_eq!(&buf[40..], esl);
     }
 
     #[test]
