@@ -8,9 +8,9 @@ use crate::backend::{
 };
 
 pub struct Backend {
-    storage_handler: StorageHandler,
-    var_reader: VarReader,
-    var_writer: VarWriter,
+    pub storage_handler: StorageHandler,
+    pub var_reader: VarReader,
+    pub var_writer: VarWriter,
 }
 
 impl Backend {

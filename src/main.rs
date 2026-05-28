@@ -3,7 +3,8 @@ mod demo;
 mod tui;
 
 fn main() -> anyhow::Result<()> {
-    demo::run()
+    demo::var_gen::run()?;
+    Ok(())
 }
 
 

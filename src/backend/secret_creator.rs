@@ -21,13 +21,13 @@ pub fn create_rsa_2048_private_key() -> Result<Vec<u8>> {
     Ok(private_key_pem)
 }
 
-pub fn create_rsa_2048_public_key(private_key_pem: Vec<u8>) -> Result<Vec<u8>> {
+pub fn create_rsa_2048_public_key(private_key_pem: &[u8]) -> Result<Vec<u8>> {
     let key_pair = PKey::private_key_from_pem(&private_key_pem)?;
     let public_key = key_pair.public_key_to_pem()?;
     Ok(public_key)
 }
 
-fn build_distinguished_name(
+pub fn build_distinguished_name(
     common_name: &str,
     country_name: &str,
     organization_name: &str,
@@ -144,7 +144,7 @@ mod tests {
             .expect("private key pem");
         let expected_public_key_pem = key_pair.public_key_to_pem().expect("public key pem");
 
-        let public_key_pem = create_rsa_2048_public_key(private_key_pem)
+        let public_key_pem = create_rsa_2048_public_key(&private_key_pem)
             .expect("public key derivation");
 
         assert_eq!(public_key_pem, expected_public_key_pem);
