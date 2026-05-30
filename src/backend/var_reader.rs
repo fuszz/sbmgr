@@ -16,10 +16,12 @@ pub struct VarReader {
 
 impl VarReader {
     pub fn new() -> Result<Self> {
-        Ok(VarReader {
+        let mut var_reader = VarReader {
             manager: efivar::system(),
             variables: vec![],
-        })
+        };
+        var_reader.update_variable_guids()?;
+        Ok(var_reader)
     }
 
     pub fn update_variable_guids(&mut self) -> Result<()> {
@@ -163,5 +165,52 @@ impl VarReader {
             &efi::Variable::new_with_vendor(&boot_entry_no, guid),
         )?;
         Ok(boot_entry)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn find_variable_guid_ok() {
+        let vr = VarReader {
+            manager: efivar::system(),
+            variables: vec![
+                ("SecureBoot".to_string(), Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap()),
+                ("Foo".to_string(), Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()),
+            ],
+        };
+
+        let guid = vr.find_variable_guid("Foo").unwrap();
+        assert_eq!(guid, Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap());
+    }
+
+    #[test]
+    fn find_variable_guid_err() {
+        let vr = VarReader {
+            manager: efivar::system(),
+            variables: vec![],
+        };
+
+        assert!(vr.find_variable_guid("NotExist").is_err());
+    }
+
+    #[test]
+    fn get_boot_entries_list_filters_and_sorts() {
+        let vr = VarReader {
+            manager: efivar::system(),
+            variables: vec![
+                ("Boot000A".to_string(), Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap()),
+                ("Boot0001".to_string(), Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()),
+                ("Other".to_string(), Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap()),
+                ("Boot0002".to_string(), Uuid::parse_str("33333333-3333-3333-3333-333333333333").unwrap()),
+            ],
+        };
+
+        let list = vr.get_boot_entries_list().unwrap();
+        let names: Vec<String> = list.iter().map(|(n, _)| n.clone()).collect();
+        assert_eq!(names, vec!["Boot0001".to_string(), "Boot0002".to_string(), "Boot000A".to_string()]);
     }
 }

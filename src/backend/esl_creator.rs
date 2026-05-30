@@ -138,7 +138,7 @@ impl EfiSigList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::var_parser::parse_signature_list;
+    use crate::backend::var_parser::parse_esl;
     use openssl::{pkey::PKey, rsa::Rsa};
     use rcgen::{BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, KeyPair, PKCS_RSA_SHA256};
 
