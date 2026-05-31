@@ -3,13 +3,16 @@ use hex::encode;
 use uuid::Uuid;
 use x509_parser::prelude::*;
 use crate::backend::guids::*;
-use sha2::{Digest, Sha256};
+use sha2::{ Digest, Sha256 };
+use std::fmt::{ Write };
 use std::fmt;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SignatureData {
     pub owner: Uuid,
     pub data: Vec<u8>,
+    pub is_x509: bool,
+    pub is_rsa2048: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,7 +52,6 @@ pub fn parse_signature_lists(data: &[u8]) -> Result<Vec<SignatureList>> {
 
 pub fn parse_esl(data: &[u8]) -> Result<SignatureList> {
     anyhow::ensure!(data.len() >= 28, "signature list is too short to contain a valid header");
-
 
     let signature_type = read_guid(&data[0..16])?;
     let signature_list_size = read_u32_le(&data[16..20])? as usize;
@@ -102,31 +104,73 @@ fn parse_signature_entries(
     for signature_bytes in signature_area.chunks_exact(signature_size) {
         let owner = read_guid(&signature_bytes[0..16])?;
         let data = signature_bytes[16..].to_vec();
-
-        signatures.push(SignatureData { owner, data });
+        let is_x509 = if signature_type == EFI_CERT_X509_GUID { true } else { false };
+        let is_rsa2048 = if signature_type == EFI_CERT_RSA2048_GUID { true } else { false };
+        signatures.push(SignatureData { owner, data, is_x509, is_rsa2048 });
     }
 
     Ok(signatures)
 }
 
-fn parse_signature_x509(
-    signature_type: Uuid,
-    owner: Uuid,
-    payload: &[u8]
-) -> Result<Option<X509Certificate>> {
-    if signature_type != EFI_CERT_X509_GUID {
-        return Ok(None);
+fn format_x509(cert_bytes: &[u8]) -> Result<String> {
+    let mut buffer = String::new();
+    match parse_x509_certificate(&cert_bytes) {
+        Ok(cert) => {
+            writeln!(&mut buffer, "      Subject: {}", cert.subject())?;
+            writeln!(&mut buffer, "      Issuer: {}", cert.issuer())?;
+            writeln!(&mut buffer, "      Not before: {}", cert.validity().not_before)?;
+            writeln!(&mut buffer, "      Not after: {}", cert.validity().not_after)?;
+            writeln!(&mut buffer, "      Not after: {}", cert.validity().not_after)?;
+            writeln!(&mut buffer, "      Checksum: {}", compute_fingerprint(&cert_bytes)?)?;
+        }
+        Err(e) => {
+            return Err(e);
+        }
     }
-
-    Ok(
-        Some(
-            parse_x509_certificate(payload).with_context(|| {
-                format!("failed to parse X509 entry for owner {}", owner)
-            })?
-        )
-    )
+    Ok(buffer)
 }
 
+fn format_sha_256(bytes: &[u8]) -> Result<String, std::fmt::Error> {
+    let mut buffer = String::new();
+    write!(&mut buffer, "      SHA-256: ")?;
+
+    for b in bytes {
+        write!(&mut buffer, "{:02x}", b)?;
+    }
+    writeln!(&mut buffer)?;
+
+    Ok(buffer)
+}
+
+fn format_rsa_2048(bytes: &[u8]) -> Result<String, std::fmt::Error> {
+    let mut buffer = String::new();
+    write!(&mut buffer, "      RSA-2048: ")?;
+
+    for (i, b) in bytes.iter().enumerate() {
+        write!(&mut buffer, "{:02x}", b)?;
+        if i < bytes.len() - 1 {
+            write!(&mut buffer, ":")?;
+        }
+    }
+    writeln!(&mut buffer)?;
+    write!(&mut buffer, "      Fignerprint (SHA-256): ")?;
+    writeln!(&mut compute_fingerprint(bytes)?)?;
+
+    Ok(buffer)
+}
+
+fn compute_fingerprint(rsa_bytes: &[u8]) -> Result<String, std::fmt::Error> {
+    let mut hasher = Sha256::new();
+    hasher.update(rsa_bytes);
+    let hash = hasher.finalize();
+    let mut buffer = String::new();
+    write!(&mut buffer, "SHA256 ")?;
+
+    for b in hash.iter() {
+        write!(&mut buffer, "{:02x}", b)?;
+    }
+    Ok(buffer)
+}
 
 fn read_u32_le(data: &[u8]) -> Result<u32> {
     let bytes: [u8; 4] = data.try_into().map_err(|_| anyhow!("invalid u32 byte slice length"))?;
@@ -139,22 +183,56 @@ fn read_guid(data: &[u8]) -> Result<Uuid> {
 }
 
 fn get_signature_type(sig_type: &Uuid) -> String {
-	match (sig_type) {
-		&EFI_CERT_X509_GUID => String::from("EFI_CERT_X509"),
-		&EFI_CERT_SHA256_GUID => String::from("EFI_CERT_SHA256"),
-		&EFI_CERT_RSA2048_GUID => String::from("EFI_CERT_RSA2048"),
-		&EFI_CERT_TYPE_PKCS7_GUID => String::from("EFI_CERT_TYPE_PKCS7"),
-		_ => String::from("Unknown signature type!"),
+    match sig_type {
+        &EFI_CERT_X509_GUID => String::from("EFI_CERT_X509"),
+        &EFI_CERT_SHA256_GUID => String::from("EFI_CERT_SHA256"),
+        &EFI_CERT_RSA2048_GUID => String::from("EFI_CERT_RSA2048"),
+        &EFI_CERT_TYPE_PKCS7_GUID => String::from("EFI_CERT_TYPE_PKCS7"),
+        _ => String::from("Unknown signature type!"),
+    }
+}
 
-	}
+impl fmt::Display for SignatureData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "    Owner UUID: {} ", &self.owner)?;
+        if self.is_x509 {
+            match format_x509(&self.data) {
+                Ok(cert_string) => writeln!(f, "{}", cert_string)?,
+                Err(err_msg) => writeln!(f, "X509 cert parsing error: {}", err_msg)?,
+            }
+        } else if self.is_rsa2048 {
+            match format_rsa_2048(&self.data) {
+                Ok(cert_string) => writeln!(f, "{}", cert_string)?,
+                Err(err_msg) => writeln!(f, "RSA2048 public key parsing error: {}", err_msg)?,
+            }
+        } else {
+            match format_sha_256(&self.data) {
+                Ok(cert_string) => writeln!(f, "{}", cert_string)?,
+                Err(err_msg) => writeln!(f, "SHA256 checksum parsing error:: {}", err_msg)?,
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for SignatureList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut sig_id = 0;
+        for signature in &self.signatures {
+            writeln!(f, "{} no: {} ", get_signature_type(&self.signature_type), sig_id)?;
+            writeln!(f, "  {}", signature)?;
+            sig_id += 1;
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for SecureBootVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for esl in &self.signature_lists {
-			writeln!(f, "  Type: {} ", get_signature_type(&esl.signature_type))?;
-			writeln!(f, "  Signature header: {}", esl.signatures);
-		}
-		Ok(())
+            writeln!(f, "EFI Signature List: \n {}", esl)?;
+        }
+        Ok(())
     }
 }
