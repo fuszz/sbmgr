@@ -35,7 +35,7 @@ impl VarWriter {
 
 	pub fn write_boot_order(&mut self, data: &[u8]) -> Result<()> {
 		let attrs: VariableFlags = VariableFlags::from_bits_retain(EFI_PK_VARIABLE_ATTRIBUTES);
-		let variable = Variable::new_with_vendor("BootOrder", EFI_GLOBAL_VARIABLE_GUID);
+		let variable = Variable::new("BootOrder");
 
 		self.manager
 			.write(&variable, attrs, data)?;

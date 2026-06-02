@@ -1,7 +1,7 @@
-mod backend;
-mod demo;
+use crate::backend;
+use anyhow::Result;    
 
-fn main() -> anyhow::Result<()> {
+pub fn run() -> Result<()> {
     let mut backend =  backend::backend::Backend::new()?;
     let boot_order = backend.var_reader.get_boot_order()?;
     let new_boot_order = backend::boot_handler::change_boot_order(&boot_order, 4)?;
@@ -11,8 +11,3 @@ fn main() -> anyhow::Result<()> {
     backend.var_writer.write_boot_order(&new_bytes_data)?;
     Ok(())
 }
-
-
-
-
-
