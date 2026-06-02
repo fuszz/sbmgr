@@ -1,20 +1,13 @@
 mod backend;
 mod demo;
-mod tui;
 
 fn main() -> anyhow::Result<()> {
-    // let mut backend = backend::backend::Backend::new()?; 
-    // let pk = backend.var_reader.get_pk()?;
-    // let pk_sb_var = backend::var_parser::parse_secure_boot_variable(&pk)?;
-    // print!("{}", pk_sb_var);
-
-    // println!("===============================");
-    // let dbx = backend.var_reader.get_dbx()?;
-    // let dbx_sb_var = backend::var_parser::parse_secure_boot_variable(&dbx)?;
-    // print!("{}", dbx_sb_var);
-
-    demo::var_gen::run()?;
-
+    let mut backend =  backend::backend::Backend::new()?;
+    let boot_order = backend.var_reader.get_boot_order()?;
+    let new_boot_order = backend::boot_handler::change_boot_order(&boot_order, 4)?;
+    println!("{:?}", new_boot_order);
+    let new_bytes_data: Vec<u8>= new_boot_order.iter().flat_map(|&x| x.to_le_bytes()).collect();
+    backend.var_writer.write_boot_order(&new_bytes_data)?;
     Ok(())
 }
 

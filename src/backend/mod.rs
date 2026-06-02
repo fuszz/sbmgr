@@ -8,3 +8,4 @@ pub mod auth_creator;
 pub mod guids;
 pub mod backend;
 pub mod esl_creator;
+pub mod boot_handler;

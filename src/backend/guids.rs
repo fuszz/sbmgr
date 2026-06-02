@@ -7,6 +7,8 @@ pub const EFI_CERT_TYPE_PKCS7_GUID: Uuid = uuid!("4aafd29d-68df-49ee-8aa9-347d37
 pub const EFI_GLOBAL_VARIABLE_GUID: Uuid = uuid!("8be4df61-93ca-11d2-aa0d-00e098032b8c");
 pub const EFI_IMAGE_SECURITY_DATABASE_GUID: Uuid = uuid!("d719b2cb-3d3a-4596-a3bc-dad00e67656f");
 pub const EFI_PK_VARIABLE_ATTRIBUTES: u32 = 0x00000027;
+pub const EFI_BOOT_VARIABLE_ATTRIBUTES: u32 = 0x00000007;
+
 
 #[derive(PartialEq, Debug)]
 pub enum SignatureType{
