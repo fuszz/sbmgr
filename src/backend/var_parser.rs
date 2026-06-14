@@ -120,7 +120,6 @@ fn format_x509(cert_bytes: &[u8]) -> Result<String> {
             writeln!(&mut buffer, "      Issuer: {}", cert.issuer())?;
             writeln!(&mut buffer, "      Not before: {}", cert.validity().not_before)?;
             writeln!(&mut buffer, "      Not after: {}", cert.validity().not_after)?;
-            writeln!(&mut buffer, "      Not after: {}", cert.validity().not_after)?;
             writeln!(&mut buffer, "      Checksum: {}", compute_fingerprint(&cert_bytes)?)?;
         }
         Err(e) => {
@@ -182,7 +181,7 @@ fn read_guid(data: &[u8]) -> Result<Uuid> {
     Ok(Uuid::from_bytes_le(bytes))
 }
 
-fn get_signature_type(sig_type: &Uuid) -> String {
+pub fn get_signature_type(sig_type: &Uuid) -> String {
     match sig_type {
         &EFI_CERT_X509_GUID => String::from("EFI_CERT_X509"),
         &EFI_CERT_SHA256_GUID => String::from("EFI_CERT_SHA256"),
